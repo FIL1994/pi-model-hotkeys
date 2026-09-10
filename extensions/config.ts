@@ -5,9 +5,18 @@ import { randomUUID } from "node:crypto";
 export const modifiers = ["alt", "ctrl", "ctrl+alt", "alt+shift"] as const;
 export const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export const modelNameStyles = ["full", "friendly", "short", "compact"] as const;
-export type ModelNameStyle = typeof modelNameStyles[number];
-export type Slot = { provider: string; model: string; thinking?: typeof levels[number]; label?: string };
-export type Config = { modifier: typeof modifiers[number]; modelNameStyle?: ModelNameStyle; slots: Record<string, Slot> };
+export type ModelNameStyle = (typeof modelNameStyles)[number];
+export type Slot = {
+  provider: string;
+  model: string;
+  thinking?: (typeof levels)[number];
+  label?: string;
+};
+export type Config = {
+  modifier: (typeof modifiers)[number];
+  modelNameStyle?: ModelNameStyle;
+  slots: Record<string, Slot>;
+};
 
 export function readConfig(path: string): Config {
   let raw: string;
@@ -18,8 +27,13 @@ export function readConfig(path: string): Config {
     throw error;
   }
   const value = JSON.parse(raw);
-  if (!value || !modifiers.includes(value.modifier) || !value.slots ||
-      typeof value.slots !== "object" || Array.isArray(value.slots)) {
+  if (
+    !value ||
+    !modifiers.includes(value.modifier) ||
+    !value.slots ||
+    typeof value.slots !== "object" ||
+    Array.isArray(value.slots)
+  ) {
     throw new Error("Invalid model-hotkeys config");
   }
   validateConfig(value);
@@ -27,16 +41,34 @@ export function readConfig(path: string): Config {
 }
 
 export function validateConfig(value: unknown): asserts value is Config {
-  if (!value || !modifiers.includes((value as Config).modifier) || !(value as Config).slots ||
-      typeof (value as Config).slots !== "object" || Array.isArray((value as Config).slots) ||
-      ((value as Config).modelNameStyle !== undefined && !modelNameStyles.includes((value as Config).modelNameStyle!))) {
+  if (
+    !value ||
+    !modifiers.includes((value as Config).modifier) ||
+    !(value as Config).slots ||
+    typeof (value as Config).slots !== "object" ||
+    Array.isArray((value as Config).slots) ||
+    ((value as Config).modelNameStyle !== undefined &&
+      !modelNameStyles.includes((value as Config).modelNameStyle!))
+  ) {
     throw new Error("Invalid model-hotkeys config");
   }
   for (const [key, slot] of Object.entries((value as Config).slots) as [string, Slot][]) {
-    if (!/^[1-9]$/.test(key) || !slot || typeof slot.provider !== "string" || slot.provider !== slot.provider.trim() || !slot.provider ||
-        typeof slot.model !== "string" || slot.model !== slot.model.trim() || !slot.model ||
-        (slot.label !== undefined && (typeof slot.label !== "string" || slot.label !== slot.label.trim() || !slot.label || /[\u0000-\u001f\u007f]/.test(slot.label))) ||
-        (slot.thinking !== undefined && !levels.includes(slot.thinking))) {
+    if (
+      !/^[1-9]$/.test(key) ||
+      !slot ||
+      typeof slot.provider !== "string" ||
+      slot.provider !== slot.provider.trim() ||
+      !slot.provider ||
+      typeof slot.model !== "string" ||
+      slot.model !== slot.model.trim() ||
+      !slot.model ||
+      (slot.label !== undefined &&
+        (typeof slot.label !== "string" ||
+          slot.label !== slot.label.trim() ||
+          !slot.label ||
+          /[\u0000-\u001f\u007f]/.test(slot.label))) ||
+      (slot.thinking !== undefined && !levels.includes(slot.thinking))
+    ) {
       throw new Error(`Invalid model-hotkeys slot: ${key}`);
     }
   }

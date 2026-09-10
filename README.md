@@ -24,10 +24,10 @@ Run `/reload` in an existing Pi session to load the extension.
 
 Assignments take effect immediately. Switching keeps your conversation intact and does not change Pi's default model for new sessions.
 
-| Command | Action |
-| --- | --- |
-| `/model-hotkeys` | Configure slots, model names, or the modifier |
-| `/model-hotkeys 3` | Configure slot 3 directly |
+| Command            | Action                                        |
+| ------------------ | --------------------------------------------- |
+| `/model-hotkeys`   | Configure slots, model names, or the modifier |
+| `/model-hotkeys 3` | Configure slot 3 directly                     |
 
 To remove an assignment, select its slot and choose **Clear slot**. Unassigned keys show a setup hint rather than switching models.
 
@@ -88,8 +88,12 @@ From a local checkout:
 ```sh
 npm install
 npm run check
+npm run lint
+npm run format:check
 npm test
 ```
+
+Run `npm run format` to format the project in place.
 
 To load your checkout in Pi:
 

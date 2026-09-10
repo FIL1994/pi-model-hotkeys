@@ -26,9 +26,14 @@ function fixture(t) {
     on: (name, handler) => events.set(name, handler),
     registerShortcut: (key, value) => shortcuts.set(key, value),
     registerCommand: (key, value) => commands.set(key, value),
-    setModel: async value => { changes.push(value); return true; },
+    setModel: async (value) => {
+      changes.push(value);
+      return true;
+    },
     getThinkingLevel: () => thinking,
-    setThinkingLevel: value => { thinking = value; },
+    setThinkingLevel: (value) => {
+      thinking = value;
+    },
   };
   const ctx = {
     mode: "tui",
@@ -36,14 +41,16 @@ function fixture(t) {
     isIdle: () => true,
     model,
     modelRegistry: {
-      find: (provider, id) => models.find(candidate => candidate.provider === provider && candidate.id === id),
+      find: (provider, id) =>
+        models.find((candidate) => candidate.provider === provider && candidate.id === id),
       getAvailable: () => models,
     },
     ui: {
       setWidget: (name, factory, options) => {
         assert.equal(name, "model-hotkeys");
         if (factory) assert.equal(options.placement, "belowEditor");
-        widget = typeof factory === "function" ? factory({}, { fg: (_color, text) => text }) : factory;
+        widget =
+          typeof factory === "function" ? factory({}, { fg: (_color, text) => text }) : factory;
       },
       notify: (...args) => notifications.push(args),
       select: async (_title, options) => {
@@ -53,18 +60,32 @@ function fixture(t) {
       input: async () => selections.shift(),
     },
   };
-  const register = () => registerModelHotkeys(pi, path, (_path, _options, listener) => {
-    watcherCallbacks.push(listener);
-    return () => { const index = watcherCallbacks.indexOf(listener); if (index >= 0) watcherCallbacks.splice(index, 1); };
-  });
+  const register = () =>
+    registerModelHotkeys(pi, path, (_path, _options, listener) => {
+      watcherCallbacks.push(listener);
+      return () => {
+        const index = watcherCallbacks.indexOf(listener);
+        if (index >= 0) watcherCallbacks.splice(index, 1);
+      };
+    });
   register();
   t.after(() => events.get("session_shutdown")?.({}, ctx));
-  return { path, pi, ctx, models, shortcuts, commands, notifications, selections, changes, register,
-    triggerWatch: () => watcherCallbacks.forEach(listener => listener()),
-    emit: name => events.get(name)?.({}, ctx),
-    legend: (width = 1000) => Array.isArray(widget) ? widget : widget?.render(width),
-    configure: args => commands.get("model-hotkeys").handler(args, ctx),
-    press: key => shortcuts.get(key).handler(ctx),
+  return {
+    path,
+    pi,
+    ctx,
+    models,
+    shortcuts,
+    commands,
+    notifications,
+    selections,
+    changes,
+    register,
+    triggerWatch: () => watcherCallbacks.forEach((listener) => listener()),
+    emit: (name) => events.get(name)?.({}, ctx),
+    legend: (width = 1000) => (Array.isArray(widget) ? widget : widget?.render(width)),
+    configure: (args) => commands.get("model-hotkeys").handler(args, ctx),
+    press: (key) => shortcuts.get(key).handler(ctx),
   };
 }
 
@@ -76,9 +97,11 @@ test("compact model names retain useful family context", () => {
   assert.equal(compactModelName("codestral-latest"), "codestral");
 });
 
-test("model name style is configurable and updates the legend immediately", async t => {
+test("model name style is configurable and updates the legend immediately", async (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => { c.slots[1] = { provider: f.ctx.model.provider, model: f.ctx.model.id }; });
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { provider: f.ctx.model.provider, model: f.ctx.model.id };
+  });
   f.emit("model_select");
 
   const chooseStyle = async (current, selected) => {
@@ -95,13 +118,13 @@ test("model name style is configurable and updates the legend immediately", asyn
   assert.equal(readConfig(f.path).modelNameStyle, "compact");
 });
 
-test("compact and friendly name collisions are qualified", t => {
+test("compact and friendly name collisions are qualified", (t) => {
   const f = fixture(t);
   f.models.push(
     { provider: "openai", id: "gpt-5.6-luna", name: "GPT-5.6 Luna" },
     { provider: "openai-codex", id: "gpt-5.7-luna", name: "GPT-5.7 Luna" },
   );
-  updateConfig(f.path, c => {
+  updateConfig(f.path, (c) => {
     c.modelNameStyle = "compact";
     c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna" };
     c.slots[2] = { provider: "openai", model: "gpt-5.6-luna" };
@@ -113,14 +136,16 @@ test("compact and friendly name collisions are qualified", t => {
   assert.match(text, /alt\+2 openai\/luna/);
   assert.match(text, /alt\+3 openai-codex\/gpt-5\.7-luna/);
 
-  updateConfig(f.path, c => { c.modelNameStyle = "friendly"; });
+  updateConfig(f.path, (c) => {
+    c.modelNameStyle = "friendly";
+  });
   f.emit("model_select");
   text = f.legend().join("");
   assert.match(text, /GPT-5\.6 Luna — openai-codex\/gpt-5\.6-luna/);
   assert.match(text, /GPT-5\.6 Luna — openai\/gpt-5\.6-luna/);
 });
 
-test("labels can be set, preserved on reassignment, and removed", async t => {
+test("labels can be set, preserved on reassignment, and removed", async (t) => {
   const f = fixture(t);
   f.selections.push("Use current model and thinking");
   await f.configure("1");
@@ -136,11 +161,16 @@ test("labels can be set, preserved on reassignment, and removed", async t => {
   assert.equal(readConfig(f.path).slots[1].label, undefined);
 });
 
-test("shutdown prevents pending switch from applying thinking or notifying", async t => {
+test("shutdown prevents pending switch from applying thinking or notifying", async (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => { c.slots[1] = { ...f.ctx.model, model: f.ctx.model.id, thinking: "high" }; });
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { ...f.ctx.model, model: f.ctx.model.id, thinking: "high" };
+  });
   let resolve;
-  f.pi.setModel = () => new Promise(r => { resolve = r; });
+  f.pi.setModel = () =>
+    new Promise((r) => {
+      resolve = r;
+    });
   const pending = f.press("alt+1");
   f.emit("session_shutdown");
   resolve(true);
@@ -149,12 +179,14 @@ test("shutdown prevents pending switch from applying thinking or notifying", asy
   assert.deepEqual(f.notifications, []);
 });
 
-test("shutdown aborts pending configuration without saving", async t => {
+test("shutdown aborts pending configuration without saving", async (t) => {
   const f = fixture(t);
   let resolve, signal;
   f.ctx.ui.select = (_title, _options, options) => {
     signal = options.signal;
-    return new Promise(r => { resolve = r; });
+    return new Promise((r) => {
+      resolve = r;
+    });
   };
   const pending = f.configure("1");
   f.emit("session_shutdown");
@@ -165,30 +197,44 @@ test("shutdown aborts pending configuration without saving", async t => {
   assert.deepEqual(f.notifications, []);
 });
 
-test("invalid updates preserve the original config", t => {
+test("invalid updates preserve the original config", (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => { c.slots[1] = { provider: "p", model: "m" }; });
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { provider: "p", model: "m" };
+  });
   const original = readFileSync(f.path, "utf8");
-  for (const invalid of [{ provider: " p" }, { model: "m " }, { label: "bad\u001b" }, { label: 42 }]) {
-    assert.throws(() => updateConfig(f.path, c => Object.assign(c.slots[1], invalid)));
+  for (const invalid of [
+    { provider: " p" },
+    { model: "m " },
+    { label: "bad\u001b" },
+    { label: 42 },
+  ]) {
+    assert.throws(() => updateConfig(f.path, (c) => Object.assign(c.slots[1], invalid)));
     assert.equal(readFileSync(f.path, "utf8"), original);
   }
-  assert.throws(() => updateConfig(f.path, c => { c.modelNameStyle = "tiny"; }));
+  assert.throws(() =>
+    updateConfig(f.path, (c) => {
+      c.modelNameStyle = "tiny";
+    }),
+  );
   assert.equal(readFileSync(f.path, "utf8"), original);
 });
 
-test("legacy configs default to short model names", t => {
+test("legacy configs default to short model names", (t) => {
   const f = fixture(t);
-  writeFileSync(f.path, JSON.stringify({
-    modifier: "alt",
-    slots: { 1: { provider: "openai-codex", model: "gpt-5.6-luna" } },
-  }));
+  writeFileSync(
+    f.path,
+    JSON.stringify({
+      modifier: "alt",
+      slots: { 1: { provider: "openai-codex", model: "gpt-5.6-luna" } },
+    }),
+  );
   assert.equal(readConfig(f.path).modelNameStyle, undefined);
   f.emit("model_select");
   assert.match(f.legend().join(""), /alt\+1 gpt-5\.6-luna/);
 });
 
-test("picker only offers supported thinking levels", async t => {
+test("picker only offers supported thinking levels", async (t) => {
   const f = fixture(t);
   f.ctx.model.reasoning = true;
   f.ctx.model.thinkingLevelMap = { minimal: null, xhigh: "xhigh" };
@@ -205,15 +251,18 @@ test("picker only offers supported thinking levels", async t => {
   assert.deepEqual(readConfig(f.path).slots, {});
 });
 
-test("registers all nine keys; unassigned slots do not switch", async t => {
+test("registers all nine keys; unassigned slots do not switch", async (t) => {
   const f = fixture(t);
-  assert.deepEqual([...f.shortcuts.keys()], Array.from({ length: 9 }, (_, i) => `alt+${i + 1}`));
+  assert.deepEqual(
+    [...f.shortcuts.keys()],
+    Array.from({ length: 9 }, (_, i) => `alt+${i + 1}`),
+  );
   await f.press("alt+1");
   assert.equal(f.changes.length, 0);
   assert.match(f.notifications[0][0], /unassigned/);
 });
 
-test("legend appears at startup and refreshes after saving, switching, and clearing", async t => {
+test("legend appears at startup and refreshes after saving, switching, and clearing", async (t) => {
   const f = fixture(t);
   f.emit("session_start");
   assert.match(f.legend().join(""), /no slots assigned.*\/model-hotkeys/);
@@ -230,41 +279,43 @@ test("legend appears at startup and refreshes after saving, switching, and clear
   assert.equal(f.legend(), undefined);
 });
 
-test("legend wraps all nine slots and shows active, not pending, modifier", async t => {
+test("legend wraps all nine slots and shows active, not pending, modifier", async (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => {
+  updateConfig(f.path, (c) => {
     for (let i = 1; i <= 9; i++) c.slots[i] = { provider: "provider", model: `model-${i}` };
     c.modifier = "ctrl";
   });
   f.emit("model_select");
   const lines = f.legend(35);
   assert.ok(lines.length > 1);
-  assert.ok(lines.every(line => visibleWidth(line) <= 35));
+  assert.ok(lines.every((line) => visibleWidth(line) <= 35));
   const text = lines.join(" ");
   for (let i = 1; i <= 9; i++) assert.match(text, new RegExp(`alt\\+${i}`));
   assert.match(text, /ctrl pending \/reload/);
 });
 
-test("legend picks up external config edits and cleans up its watcher", async t => {
+test("legend picks up external config edits and cleans up its watcher", async (t) => {
   const f = fixture(t);
   f.emit("session_start");
-  updateConfig(f.path, c => { c.slots[4] = { provider: "external", model: "new-model" }; });
+  updateConfig(f.path, (c) => {
+    c.slots[4] = { provider: "external", model: "new-model" };
+  });
   f.triggerWatch();
   assert.match(f.legend().join(""), /alt\+4 new-model/);
   f.emit("session_shutdown");
   assert.equal(f.legend(), undefined);
 });
 
-test("legend does not create TUI widgets in non-TUI modes", t => {
+test("legend does not create TUI widgets in non-TUI modes", (t) => {
   const f = fixture(t);
   f.ctx.mode = "rpc";
   f.emit("session_start");
   assert.equal(f.legend(), undefined);
 });
 
-test("legend highlights exact thinking presets and keep-current slots", t => {
+test("legend highlights exact thinking presets and keep-current slots", (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => {
+  updateConfig(f.path, (c) => {
     const slot = { provider: "openai-codex", model: "gpt-5.6-luna" };
     c.slots[1] = { ...slot, thinking: "medium" };
     c.slots[2] = { ...slot, thinking: "high" };
@@ -283,9 +334,9 @@ test("legend highlights exact thinking presets and keep-current slots", t => {
   assert.match(text, /● alt\+3/);
 });
 
-test("compact labels qualify provider collisions without shortening model IDs", t => {
+test("compact labels qualify provider collisions without shortening model IDs", (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => {
+  updateConfig(f.path, (c) => {
     c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna" };
     c.slots[2] = { provider: "openai", model: "gpt-5.6-luna" };
     c.slots[3] = { provider: "local", model: "namespace/unique-model" };
@@ -299,7 +350,7 @@ test("compact labels qualify provider collisions without shortening model IDs", 
   assert.doesNotMatch(text, /local\//);
 });
 
-test("configure current model, persist, switch, and clear", async t => {
+test("configure current model, persist, switch, and clear", async (t) => {
   const f = fixture(t);
   f.selections.push("Use current model and thinking");
   await f.configure("3");
@@ -313,7 +364,7 @@ test("configure current model, persist, switch, and clear", async t => {
   assert.equal(readConfig(f.path).slots[3], undefined);
 });
 
-test("model picker supports explicit thinking and cancellation", async t => {
+test("model picker supports explicit thinking and cancellation", async (t) => {
   const f = fixture(t);
   f.selections.push("Choose model", "openai-codex", "gpt-5.6-luna", "high");
   await f.configure("9");
@@ -325,7 +376,7 @@ test("model picker supports explicit thinking and cancellation", async t => {
   assert.equal(readFileSync(f.path, "utf8"), before);
 });
 
-test("keep current thinking does not reset it", async t => {
+test("keep current thinking does not reset it", async (t) => {
   const f = fixture(t);
   f.selections.push("Choose model", "openai-codex", "gpt-5.6-luna", "Keep current");
   await f.configure("1");
@@ -334,9 +385,11 @@ test("keep current thinking does not reset it", async t => {
   assert.equal(f.pi.getThinkingLevel(), "low");
 });
 
-test("busy, missing-model, and auth failures leave thinking unchanged", async t => {
+test("busy, missing-model, and auth failures leave thinking unchanged", async (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => { c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna", thinking: "high" }; });
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna", thinking: "high" };
+  });
   f.ctx.isIdle = () => false;
   await f.press("alt+1");
   assert.equal(f.changes.length, 0);
@@ -350,7 +403,7 @@ test("busy, missing-model, and auth failures leave thinking unchanged", async t 
   assert.match(f.notifications.at(-1)[0], /not found/);
 });
 
-test("modifier is saved and registered on reload", async t => {
+test("modifier is saved and registered on reload", async (t) => {
   const f = fixture(t);
   f.selections.push(9, "ctrl+alt", "Done");
   await f.configure("");
@@ -361,11 +414,19 @@ test("modifier is saved and registered on reload", async t => {
   assert.ok(f.shortcuts.has("ctrl+alt+1"));
 });
 
-test("invalid config is preserved and errors are reported", async t => {
+test("invalid config is preserved and errors are reported", async (t) => {
   const f = fixture(t);
-  for (const text of ["{broken", '{"modifier":"alt","slots":{"0":{}}}', '{"modifier":"invalid","slots":{}}']) {
+  for (const text of [
+    "{broken",
+    '{"modifier":"alt","slots":{"0":{}}}',
+    '{"modifier":"invalid","slots":{}}',
+  ]) {
     writeFileSync(f.path, text);
-    assert.throws(() => updateConfig(f.path, c => { c.slots = {}; }));
+    assert.throws(() =>
+      updateConfig(f.path, (c) => {
+        c.slots = {};
+      }),
+    );
     await f.configure("1");
     await f.press("alt+1");
     assert.equal(readFileSync(f.path, "utf8"), text);
@@ -373,9 +434,11 @@ test("invalid config is preserved and errors are reported", async t => {
   }
 });
 
-test("fresh edits preserve other slots and invalid arguments are rejected", async t => {
+test("fresh edits preserve other slots and invalid arguments are rejected", async (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => { c.slots[2] = { provider: "other", model: "model/with/slashes" }; });
+  updateConfig(f.path, (c) => {
+    c.slots[2] = { provider: "other", model: "model/with/slashes" };
+  });
   f.selections.push("Use current model and thinking");
   await f.configure("1");
   assert.equal(readConfig(f.path).slots[2].model, "model/with/slashes");
@@ -383,12 +446,19 @@ test("fresh edits preserve other slots and invalid arguments are rejected", asyn
   assert.match(f.notifications.at(-1)[0], /Usage/);
 });
 
-test("overlapping keypresses do not race model changes", async t => {
+test("overlapping keypresses do not race model changes", async (t) => {
   const f = fixture(t);
-  updateConfig(f.path, c => { c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna" }; });
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna" };
+  });
   let release;
   let calls = 0;
-  f.pi.setModel = () => { calls++; return new Promise(resolve => { release = resolve; }); };
+  f.pi.setModel = () => {
+    calls++;
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  };
   const first = f.press("alt+1");
   await f.press("alt+1");
   assert.equal(calls, 1);
