@@ -3,9 +3,11 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { wrapTextWithAnsi, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import type { TuiMouseEvent } from "@earendil-works/pi-tui";
 import { watchFile, unwatchFile } from "node:fs";
 import { join } from "node:path";
+import { refreshCatalogue, scopedSnapshot } from "./catalogue.ts";
+import { legendModelLabel, previewLegend, renderLegend } from "./legend.ts";
 import {
   levels,
   modelNameStyles,
@@ -26,8 +28,9 @@ import {
   modelInScope,
   thinkingChoices,
   type PickerModel,
-  type ScopedPickerModel,
 } from "./model-picker.ts";
+
+export { compactModelName } from "./legend.ts";
 
 const describe = (slot?: Slot) =>
   slot
@@ -41,72 +44,11 @@ const styleChoices: Record<ModelNameStyle, string> = {
   compact: "Compact — family name",
 };
 
-function scopedSnapshot(ctx: ExtensionContext): ScopedPickerModel[] {
-  return [...(ctx.scopedModels ?? [])] as ScopedPickerModel[];
-}
-
 function modelFromKey(
   models: readonly PickerModel[],
   key: string | undefined,
 ): PickerModel | undefined {
   return key ? models.find((model) => modelKey(model) === key) : undefined;
-}
-
-function previewLegend(
-  key: string,
-  slot: Slot,
-  model: PickerModel,
-  current: PickerModel | undefined,
-  currentThinking: (typeof levels)[number],
-  modifier: Config["modifier"],
-  modelLabel: string,
-): string {
-  const effective =
-    slot.thinking === undefined
-      ? effectiveThinkingLevel(model, currentThinking)
-      : effectiveThinkingLevel(model, slot.thinking);
-  const isCurrent =
-    !!current && modelKey(current) === modelKey(model) && effective === currentThinking;
-  const preset = slot.thinking === undefined ? "" : ` (${slot.thinking})`;
-  return `${isCurrent ? "● " : ""}${modifier}+${key} ${slot.label ?? modelLabel}${preset} — effective thinking: ${effective}`;
-}
-
-function legendModelLabel(
-  config: Config,
-  key: string,
-  slot: Slot,
-  findModel: (provider: string, model: string) => { name?: string } | undefined,
-): string {
-  const style = config.modelNameStyle ?? "short";
-  const others = Object.entries(config.slots)
-    .filter(([otherKey, other]) => otherKey !== key && !other.label)
-    .map(([, other]) => other);
-  const sameTarget = (other: Slot) =>
-    other.provider === slot.provider && other.model === slot.model;
-  if (style === "full") return `${slot.provider}/${slot.model}`;
-  if (style === "friendly") {
-    const friendly = findModel(slot.provider, slot.model)?.name || slot.model;
-    const ambiguous = others.some(
-      (other) =>
-        !sameTarget(other) &&
-        (findModel(other.provider, other.model)?.name || other.model) === friendly,
-    );
-    return ambiguous ? `${friendly} — ${slot.provider}/${slot.model}` : friendly;
-  }
-  if (style === "compact") {
-    const compact = compactModelName(slot.model);
-    const collisions = others.filter(
-      (other) => !sameTarget(other) && compactModelName(other.model) === compact,
-    );
-    if (!collisions.length) return compact;
-    return collisions.every((other) => other.provider !== slot.provider)
-      ? `${slot.provider}/${compact}`
-      : `${slot.provider}/${slot.model}`;
-  }
-  const ambiguous = others.some(
-    (other) => other.model === slot.model && other.provider !== slot.provider,
-  );
-  return ambiguous ? `${slot.provider}/${slot.model}` : slot.model;
 }
 
 export function parseCommandArgs(args: string): { slot?: string; query?: string } | undefined {
@@ -115,28 +57,6 @@ export function parseCommandArgs(args: string): { slot?: string; query?: string 
   const [first, ...rest] = trimmed.split(/\s+/u);
   if (!/^[1-9]$/.test(first)) return undefined;
   return { slot: first, query: rest.join(" ") || undefined };
-}
-
-const versionToken = /^(?:v?\d+(?:[._]\d+)*(?:b|k)?|\d{8})$/i;
-const suffixNoise = new Set(["latest", "preview", "experimental", "exp"]);
-
-/** Derive a compact, stable family label from a model ID. */
-export function compactModelName(modelId: string): string {
-  const base = modelId.split("/").at(-1) ?? modelId;
-  const tokens = base.split("-").filter(Boolean);
-  const meaningful = tokens.filter(
-    (token) => !versionToken.test(token) && !suffixNoise.has(token.toLowerCase()),
-  );
-  if (meaningful.length < 2) {
-    const removedOnlyNoise =
-      tokens.some((token) => suffixNoise.has(token.toLowerCase())) &&
-      !tokens.some((token) => versionToken.test(token));
-    return meaningful.length === 1 && removedOnlyNoise ? meaningful[0] : base;
-  }
-
-  const root = meaningful[0].toLowerCase();
-  const family = meaningful.slice(root === "gpt" || root === "claude" ? 1 : 0);
-  return family.length ? family.join("-") : base;
 }
 
 type Watch = (
@@ -219,27 +139,17 @@ export function registerModelHotkeys(
           }
         },
         render(width) {
-          if (width < 1) return [];
-          const entries = Object.entries(config.slots).sort(([a], [b]) => Number(a) - Number(b));
-          const labels = entries.map(([key, slot]) => {
-            const active =
-              ctx.model?.provider === slot.provider &&
-              ctx.model?.id === slot.model &&
-              (slot.thinking === undefined || slot.thinking === pi.getThinkingLevel());
-            const modelLabel = legendModelLabel(config, key, slot, (provider, model) =>
-              ctx.modelRegistry.find(provider, model),
-            );
-            const label = `${active ? "● " : ""}${modifier}+${key} ${slot.label ?? modelLabel}${slot.thinking ? ` (${slot.thinking})` : ""}`;
-            return theme.fg(active ? "accent" : "muted", label);
-          });
-          const text = labels.length
-            ? labels.join(theme.fg("dim", "  |  "))
-            : theme.fg("dim", "Model hotkeys: no slots assigned — /model-hotkeys");
-          const pending =
-            config.modifier !== modifier
-              ? theme.fg("warning", `  [${config.modifier} pending /reload]`)
-              : "";
-          return wrapTextWithAnsi(text + pending, width);
+          return renderLegend(
+            {
+              config,
+              modifier,
+              current: ctx.model,
+              currentThinking: pi.getThinkingLevel(),
+              findModel: (provider, model) => ctx.modelRegistry.find(provider, model),
+              theme,
+            },
+            width,
+          );
         },
         invalidate() {},
       }),
@@ -390,55 +300,8 @@ export function registerModelHotkeys(
                   current: ctx.model as PickerModel | undefined,
                   slots: readConfig(path).slots,
                   lifecycle: signal,
-                  refresh: async (refreshSignal) => {
-                    const cached = ctx.modelRegistry.getAvailable() as PickerModel[];
-                    try {
-                      const result = await ctx.modelRegistry.refresh({
-                        allowNetwork: true,
-                        force: true,
-                        signal: refreshSignal,
-                      });
-                      if (refreshSignal.aborted || signal.aborted) {
-                        return { models: cached, status: "Refresh cancelled" };
-                      }
-                      const models = ctx.modelRegistry.getAvailable() as PickerModel[];
-                      const updatedScoped = scoped.map((entry) => ({
-                        ...entry,
-                        model: (ctx.modelRegistry.find(entry.model.provider, entry.model.id) ??
-                          entry.model) as PickerModel,
-                      }));
-                      scoped = updatedScoped;
-                      const errors = result.errors?.size ?? 0;
-                      return {
-                        models,
-                        scopedModels: updatedScoped,
-                        status:
-                          result.aborted || refreshSignal.aborted
-                            ? "Refresh cancelled"
-                            : errors
-                              ? `Refresh partially completed (${errors} provider error${errors === 1 ? "" : "s"}); cached models remain available`
-                              : "Model catalogue refreshed successfully",
-                      };
-                    } catch (error) {
-                      if (refreshSignal.aborted || signal.aborted) {
-                        return { models: cached, status: "Refresh cancelled" };
-                      }
-                      if (
-                        error instanceof Error &&
-                        (error.name === "TimeoutError" ||
-                          /timed? ?out|timeout/i.test(error.message))
-                      ) {
-                        return {
-                          models: cached,
-                          status: "Refresh timed out; cached models remain available",
-                        };
-                      }
-                      return {
-                        models: cached,
-                        status: `Refresh failed: ${error instanceof Error ? error.message : String(error)}`,
-                      };
-                    }
-                  },
+                  refresh: (refreshSignal) =>
+                    refreshCatalogue(ctx.modelRegistry, scoped, refreshSignal, signal),
                   onRefresh: (outcome) => {
                     refreshedModels = outcome.models;
                     if (outcome.scopedModels) scoped = outcome.scopedModels;
