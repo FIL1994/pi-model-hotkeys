@@ -210,8 +210,8 @@ export class ModelPickerComponent<T extends PickerModel> extends Container imple
   private readonly theme: ModelPickerOptions<T>["theme"];
   private readonly keybindings: KeybindingsManager;
   private readonly input: Input;
-  private readonly done: (key: string | undefined) => void;
-  private readonly refresh?: ModelPickerOptions<T>["refresh"];
+  private done?: (key: string | undefined) => void;
+  private refresh?: ModelPickerOptions<T>["refresh"];
   private readonly refreshTimeoutMs: number;
   private readonly lifecycle?: AbortSignal;
   private readonly abortHandler?: () => void;
@@ -289,14 +289,18 @@ export class ModelPickerComponent<T extends PickerModel> extends Container imple
 
   private sourceModels(): T[] {
     if (!this.scoped) return this.models;
-    return orderModels(uniqueModels(this.scopedModels.map((entry) => entry.model) as T[]), {
+    return orderModels(this.scopedModels.map((entry) => entry.model) as T[], {
       current: this.current,
       slots: this.slots,
     });
   }
 
   private filter(): void {
-    this.filtered = filterModels(this.sourceModels(), this.query);
+    // Both sources are already unique. Reuse the source for an empty query
+    // rather than allocating another array and deduplication set.
+    const source = this.sourceModels();
+    const query = this.query.trim();
+    this.filtered = query ? fuzzyFilter(source, query, modelSearchText) : source;
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filtered.length - 1));
   }
 
@@ -312,7 +316,19 @@ export class ModelPickerComponent<T extends PickerModel> extends Container imple
     if (this.lifecycle && this.abortHandler) {
       this.lifecycle.removeEventListener("abort", this.abortHandler);
     }
-    this.done(key);
+    // Drop owned references even if an external refresh retains this component.
+    // Replace arrays rather than clearing them: callers may still own them.
+    this.models = [];
+    this.filtered = this.models;
+    this.scopedModels = [];
+    this.current = undefined;
+    this.slots = {};
+    this.refresh = undefined;
+    this.onRefresh = undefined;
+    this.onScopeChange = undefined;
+    const done = this.done;
+    this.done = undefined;
+    done?.(key);
   }
 
   private async runRefresh(): Promise<void> {
@@ -409,9 +425,13 @@ export class ModelPickerComponent<T extends PickerModel> extends Container imple
       this.close(undefined);
       return;
     }
+    const previousQuery = this.query;
     this.input.handleInput(data);
-    this.selectedIndex = 0;
-    this.filter();
+    if (this.closed) return;
+    if (this.query !== previousQuery) {
+      this.selectedIndex = 0;
+      this.filter();
+    }
     this.tui.requestRender();
   }
 

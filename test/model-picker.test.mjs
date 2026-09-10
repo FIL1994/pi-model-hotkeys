@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   effectivePresetDescription,
@@ -62,6 +63,88 @@ test("model search uses name, provider, and ID and ordering prioritizes current 
     }).map((model) => model.id),
     ["same", "gpt-luna", "zeta"],
   );
+});
+
+test("empty queries reuse the ordered catalogue and filtering preserves unique sources", () => {
+  const input = Object.freeze([...models, models[1]]);
+  const picker = component({ models: input, scoped: false });
+  const source = picker.visibleModels;
+  assert.equal(source, picker.models);
+  assert.equal(source.length, models.length);
+  picker.handleInput("luna");
+  assert.deepEqual(picker.visibleModels, filterModels(source, "luna"));
+  picker.handleInput("\x15"); // Ctrl+U clears the query.
+  assert.equal(picker.query, "");
+  assert.equal(picker.visibleModels, source);
+  picker.setModels(input);
+  assert.equal(picker.visibleModels, picker.models);
+  picker.dispose();
+  assert.equal(input.length, 4);
+  assert.equal(source.length, 3);
+
+  const scoped = component({
+    scopedModels: [{ model: models[1] }, { model: models[1] }],
+  });
+  assert.deepEqual(scoped.visibleModels, [models[1]]);
+  scoped.handleInput("luna");
+  assert.deepEqual(scoped.visibleModels, [models[1]]);
+  scoped.dispose();
+});
+
+test("cursor-only input preserves filtered rows and selection", () => {
+  let selected;
+  const picker = component({ scoped: false, query: "luna" }, (key) => (selected = key));
+  const rows = picker.visibleModels;
+  picker.handleInput("down");
+  picker.handleInput("\x1b[D");
+  assert.equal(picker.query, "luna");
+  assert.equal(picker.visibleModels, rows);
+  picker.handleInput("enter");
+  assert.equal(selected, "b\u0000same");
+});
+
+test("closing releases owned references and refresh listeners without mutating caller data", async () => {
+  const lifecycle = new AbortController();
+  let signal;
+  let settle;
+  let closed = 0;
+  let refreshed = 0;
+  const scopedModels = Object.freeze([{ model: models[1] }]);
+  const picker = component(
+    {
+      lifecycle: lifecycle.signal,
+      scopedModels,
+      refresh: (value) => {
+        signal = value;
+        return new Promise((resolve) => {
+          settle = resolve;
+        });
+      },
+      onRefresh: () => refreshed++,
+    },
+    () => closed++,
+  );
+  picker.handleInput("\x12");
+  picker.dispose();
+  picker.dispose();
+  assert.equal(signal.aborted, true);
+  assert.equal(closed, 1);
+  assert.deepEqual(picker.visibleModels, []);
+  assert.deepEqual(picker.models, []);
+  assert.deepEqual(picker.scopedModels, []);
+  for (const field of ["current", "refresh", "onRefresh", "onScopeChange", "done"]) {
+    assert.equal(picker[field], undefined);
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(getEventListeners(lifecycle.signal, "abort").length, 0);
+  assert.equal(getEventListeners(signal, "abort").length, 0);
+  assert.equal(picker.refreshController, undefined);
+  settle({ models });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(refreshed, 0);
+  assert.deepEqual(picker.visibleModels, []);
+  assert.equal(scopedModels.length, 1);
+  assert.equal(models.length, 3);
 });
 
 test("scope, markers, prefilled query, Tab, and width-safe rendering work", () => {
