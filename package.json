@@ -23,7 +23,6 @@
   "files": [
     "extensions",
     "README.md",
-    "CHANGELOG.md",
     "LICENSE"
   ],
   "type": "module",

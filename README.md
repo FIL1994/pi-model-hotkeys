@@ -130,6 +130,27 @@ pi install .
 
 Run `/reload` after changing extension code.
 
+## Releases
+
+[GitHub Releases](https://github.com/FIL1994/pi-model-hotkeys/releases) contain the
+release history; there is no manually maintained changelog.
+
+Release Please runs on pushes to `main` and can also be run manually from GitHub
+Actions. It opens or updates a release PR using Conventional Commits (`fix:` for
+patches, `feat:` for features, and `!` or `BREAKING CHANGE:` for breaking changes).
+Merge that PR to update `package.json`, create a version tag, and publish a GitHub
+release with generated notes. This workflow does not publish to npm.
+
+The release manifest starts at the existing package version, `0.1.0`; the initial
+commit is the bootstrap baseline for the first automated release. While versions
+are below `1.0.0`, breaking changes bump the minor version.
+
+Repository setup requires **Settings → Actions → General → Workflow permissions →
+Allow GitHub Actions to create and approve pull requests**. The workflow uses the
+built-in `GITHUB_TOKEN`; no additional secret is required. PRs created with that
+token do not automatically trigger other GitHub Actions workflows. If PR CI is
+added later, use a GitHub App token or arrange an explicit validation trigger.
+
 ## License
 
 [MIT](LICENSE)
