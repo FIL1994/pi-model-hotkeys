@@ -323,6 +323,11 @@ export class ModelPickerComponent<T extends PickerModel> extends Container imple
     const controller = new AbortController();
     this.refreshController = controller;
     let timedOut = false;
+    let rejectAborted!: () => void;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectAborted = () => reject(new Error("Refresh aborted"));
+      controller.signal.addEventListener("abort", rejectAborted, { once: true });
+    });
     const timeout = setTimeout(() => {
       timedOut = true;
       controller.abort();
@@ -330,7 +335,9 @@ export class ModelPickerComponent<T extends PickerModel> extends Container imple
     const unlink = () => controller.abort();
     this.lifecycle?.addEventListener("abort", unlink, { once: true });
     try {
-      const outcome = await this.refresh(controller.signal);
+      // Stop waiting even if the callback ignores cancellation. Late settlements
+      // are consumed by the race and cannot update this picker or a later refresh.
+      const outcome = await Promise.race([this.refresh(controller.signal), aborted]);
       if (this.closed || this.lifecycle?.aborted) return;
       if (timedOut) {
         this.status = "Refresh timed out; cached models remain available";
@@ -352,6 +359,7 @@ export class ModelPickerComponent<T extends PickerModel> extends Container imple
       this.status = `Refresh failed: ${error instanceof Error ? error.message : String(error)}`;
     } finally {
       clearTimeout(timeout);
+      controller.signal.removeEventListener("abort", rejectAborted);
       this.lifecycle?.removeEventListener("abort", unlink);
       if (!this.closed) {
         this.refreshing = false;

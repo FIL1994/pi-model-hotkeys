@@ -77,7 +77,8 @@ export function validateConfig(value: unknown): asserts value is Config {
   }
 }
 
-// Read immediately before each mutation so other sessions' unrelated edits survive.
+// Read the latest saved config before editing. Atomic rename prevents partial files,
+// but concurrent read–modify–write operations remain last-writer-wins (no lock).
 export function updateConfig(path: string, edit: (config: Config) => void): Config {
   const config = readConfig(path);
   edit(config);

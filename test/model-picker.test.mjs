@@ -142,6 +142,57 @@ test("refresh timeout keeps cached rows and reports the timeout", async () => {
   picker.dispose();
 });
 
+for (const settlement of ["never", "resolve", "reject"]) {
+  test(`refresh timeout releases an abort-ignoring callback (${settlement}) and permits retry`, async () => {
+    let firstSignal;
+    let resolveFirst;
+    let rejectFirst;
+    let calls = 0;
+    const outcomes = [];
+    const freshModels = [{ provider: "p", id: "fresh", name: "Fresh" }];
+    const picker = component({
+      scoped: false,
+      refreshTimeoutMs: 1,
+      refresh: (signal) => {
+        calls++;
+        if (calls > 1) return Promise.resolve({ models: freshModels, status: "retry ok" });
+        firstSignal = signal;
+        return new Promise((resolve, reject) => {
+          resolveFirst = resolve;
+          rejectFirst = reject;
+        });
+      },
+      onRefresh: (outcome) => outcomes.push(outcome),
+    });
+    try {
+      const cached = [...picker.visibleModels];
+      picker.handleInput("\x12");
+      picker.handleInput("\x12");
+      assert.equal(calls, 1);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(firstSignal.aborted, true);
+      assert.match(picker.render(120).join("\n"), /Refresh timed out/);
+      assert.deepEqual(picker.visibleModels, cached);
+      assert.equal(outcomes.length, 0);
+
+      picker.handleInput("\x12");
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(calls, 2);
+      assert.deepEqual(picker.visibleModels, freshModels);
+      assert.equal(outcomes.length, 1);
+
+      if (settlement === "resolve") resolveFirst({ models, status: "stale result" });
+      if (settlement === "reject") rejectFirst(new Error("late failure"));
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(picker.visibleModels, freshModels);
+      assert.equal(outcomes.length, 1);
+      assert.match(picker.render(120).join("\n"), /retry ok/);
+    } finally {
+      picker.dispose();
+    }
+  });
+}
+
 test("picker distinguishes empty scope, empty authenticated catalogue, and no search matches", () => {
   const scopedEmpty = component({ models: [], scopedModels: [], scoped: true });
   assert.match(scopedEmpty.render(100).join("\n"), /current scope/);
