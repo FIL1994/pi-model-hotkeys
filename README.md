@@ -17,17 +17,18 @@ Run `/reload` in an existing Pi session to load the extension.
 
 ## Set up your shortcuts
 
-1. Run `/model-hotkeys`.
+1. Run `/model-hotkeys` (or `/model-hotkeys 3 gpt luna` to open slot 3 with a prefilled search).
 2. Select a slot from **1–9**.
 3. Choose **Choose model** to pick a provider, model, and thinking setting—or **Use current model and thinking** to save your current setup. Use **Set/remove label** to give an existing slot a short label (blank removes it).
 4. Close the menu and press **Alt + the slot number** to switch.
 
 Assignments take effect immediately. Switching keeps your conversation intact and does not change Pi's default model for new sessions.
 
-| Command            | Action                                        |
-| ------------------ | --------------------------------------------- |
-| `/model-hotkeys`   | Configure slots, model names, or the modifier |
-| `/model-hotkeys 3` | Configure slot 3 directly                     |
+| Command                     | Action                                        |
+| --------------------------- | --------------------------------------------- |
+| `/model-hotkeys`            | Configure slots, model names, or the modifier |
+| `/model-hotkeys 3`          | Configure slot 3 directly                     |
+| `/model-hotkeys 3 gpt luna` | Configure slot 3 with an initial model search |
 
 To remove an assignment, select its slot and choose **Clear slot**. Unassigned keys show a setup hint rather than switching models.
 
@@ -51,6 +52,19 @@ alt+1 gpt-5.6-luna (low) | ● alt+2 gpt-5.6-luna (high) | ● alt+3 gpt-5.6-lun
 Choose **Keep current** to switch models without requesting a new thinking level, or save an explicit level such as `low`, `high`, or `xhigh`.
 
 Pi adjusts thinking levels to what the target model supports. If a saved level is unsupported and Pi selects a different one, that slot won't be highlighted as an exact match. Use **Use current model and thinking** to save the supported setting.
+
+The model picker starts in the session's scoped model list when one is configured.
+Press **Tab** to toggle between that snapshot and all authenticated available
+models. Search covers friendly name, provider, and model ID. **Ctrl+R** is an
+explicit network refresh; cached rows stay visible while it runs and any
+scoped rows are retained by provider/model ID. A shortcut refuses to switch to
+an assigned model outside the active non-empty scope.
+
+Choose **Copy preset from another slot** to copy a saved model and thinking
+preset without copying the target slot's label. Before any choose/copy/current
+model save, the picker shows the exact legend-style result and asks for
+confirmation; duplicate presets get an additional warning. Clear and label
+changes do not require a save preview.
 
 ## Change the modifier
 

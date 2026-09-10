@@ -7,6 +7,9 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A searchable single-list model picker with scope toggling, explicit refresh,
+  capability-aware thinking presets, duplicate warnings, save previews, and
+  preset copying between slots.
 - Opt-in Alt+wheel slot cycling over the model legend in fullscreen mode.
 - Optional labels for model slots.
 - Capability-aware thinking-level choices.
@@ -14,6 +17,8 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `/model-hotkeys 3 <query>` now opens slot 3 with a prefilled model search;
+  model selection honors the session model scope for both picking and shortcuts.
 - Configuration file watching is more reliable and testable.
 - Configuration validation rejects unusable model identifiers and labels.
 

@@ -16,6 +16,18 @@ import {
   type ModelNameStyle,
   type Slot,
 } from "./config.ts";
+import {
+  effectivePresetDescription,
+  effectiveThinkingLevel,
+  filterModels,
+  flatModelChoices,
+  modelKey,
+  ModelPickerComponent,
+  modelInScope,
+  thinkingChoices,
+  type PickerModel,
+  type ScopedPickerModel,
+} from "./model-picker.ts";
 
 const describe = (slot?: Slot) =>
   slot
@@ -28,6 +40,82 @@ const styleChoices: Record<ModelNameStyle, string> = {
   short: "Short — model ID",
   compact: "Compact — family name",
 };
+
+function scopedSnapshot(ctx: ExtensionContext): ScopedPickerModel[] {
+  return [...(ctx.scopedModels ?? [])] as ScopedPickerModel[];
+}
+
+function modelFromKey(
+  models: readonly PickerModel[],
+  key: string | undefined,
+): PickerModel | undefined {
+  return key ? models.find((model) => modelKey(model) === key) : undefined;
+}
+
+function previewLegend(
+  key: string,
+  slot: Slot,
+  model: PickerModel,
+  current: PickerModel | undefined,
+  currentThinking: (typeof levels)[number],
+  modifier: Config["modifier"],
+  modelLabel: string,
+): string {
+  const effective =
+    slot.thinking === undefined
+      ? effectiveThinkingLevel(model, currentThinking)
+      : effectiveThinkingLevel(model, slot.thinking);
+  const isCurrent =
+    !!current && modelKey(current) === modelKey(model) && effective === currentThinking;
+  const preset = slot.thinking === undefined ? "" : ` (${slot.thinking})`;
+  return `${isCurrent ? "● " : ""}${modifier}+${key} ${slot.label ?? modelLabel}${preset} — effective thinking: ${effective}`;
+}
+
+function legendModelLabel(
+  config: Config,
+  key: string,
+  slot: Slot,
+  findModel: (provider: string, model: string) => { name?: string } | undefined,
+): string {
+  const style = config.modelNameStyle ?? "short";
+  const others = Object.entries(config.slots)
+    .filter(([otherKey, other]) => otherKey !== key && !other.label)
+    .map(([, other]) => other);
+  const sameTarget = (other: Slot) =>
+    other.provider === slot.provider && other.model === slot.model;
+  if (style === "full") return `${slot.provider}/${slot.model}`;
+  if (style === "friendly") {
+    const friendly = findModel(slot.provider, slot.model)?.name || slot.model;
+    const ambiguous = others.some(
+      (other) =>
+        !sameTarget(other) &&
+        (findModel(other.provider, other.model)?.name || other.model) === friendly,
+    );
+    return ambiguous ? `${friendly} — ${slot.provider}/${slot.model}` : friendly;
+  }
+  if (style === "compact") {
+    const compact = compactModelName(slot.model);
+    const collisions = others.filter(
+      (other) => !sameTarget(other) && compactModelName(other.model) === compact,
+    );
+    if (!collisions.length) return compact;
+    return collisions.every((other) => other.provider !== slot.provider)
+      ? `${slot.provider}/${compact}`
+      : `${slot.provider}/${slot.model}`;
+  }
+  const ambiguous = others.some(
+    (other) => other.model === slot.model && other.provider !== slot.provider,
+  );
+  return ambiguous ? `${slot.provider}/${slot.model}` : slot.model;
+}
+
+export function parseCommandArgs(args: string): { slot?: string; query?: string } | undefined {
+  const trimmed = args.trim();
+  if (!trimmed) return {};
+  const [first, ...rest] = trimmed.split(/\s+/u);
+  if (!/^[1-9]$/.test(first)) return undefined;
+  return { slot: first, query: rest.join(" ") || undefined };
+}
 
 const versionToken = /^(?:v?\d+(?:[._]\d+)*(?:b|k)?|\d{8})$/i;
 const suffixNoise = new Set(["latest", "preview", "experimental", "exp"]);
@@ -138,41 +226,9 @@ export function registerModelHotkeys(
               ctx.model?.provider === slot.provider &&
               ctx.model?.id === slot.model &&
               (slot.thinking === undefined || slot.thinking === pi.getThinkingLevel());
-            const style = config.modelNameStyle ?? "short";
-            const others = entries
-              .map(([, other]) => other)
-              .filter((other) => !other.label && other !== slot);
-            const sameTarget = (other: Slot) =>
-              other.provider === slot.provider && other.model === slot.model;
-            let modelLabel: string;
-            if (style === "full") {
-              modelLabel = `${slot.provider}/${slot.model}`;
-            } else if (style === "friendly") {
-              const friendly =
-                ctx.modelRegistry.find(slot.provider, slot.model)?.name || slot.model;
-              const ambiguous = others.some(
-                (other) =>
-                  !sameTarget(other) &&
-                  (ctx.modelRegistry.find(other.provider, other.model)?.name || other.model) ===
-                    friendly,
-              );
-              modelLabel = ambiguous ? `${friendly} — ${slot.provider}/${slot.model}` : friendly;
-            } else if (style === "compact") {
-              const compact = compactModelName(slot.model);
-              const collisions = others.filter(
-                (other) => !sameTarget(other) && compactModelName(other.model) === compact,
-              );
-              if (!collisions.length) modelLabel = compact;
-              else if (collisions.every((other) => other.provider !== slot.provider))
-                modelLabel = `${slot.provider}/${compact}`;
-              else modelLabel = `${slot.provider}/${slot.model}`;
-            } else {
-              // Keep the model ID intact; qualify only collisions across providers.
-              const ambiguous = others.some(
-                (other) => other.model === slot.model && other.provider !== slot.provider,
-              );
-              modelLabel = ambiguous ? `${slot.provider}/${slot.model}` : slot.model;
-            }
+            const modelLabel = legendModelLabel(config, key, slot, (provider, model) =>
+              ctx.modelRegistry.find(provider, model),
+            );
             const label = `${active ? "● " : ""}${modifier}+${key} ${slot.label ?? modelLabel}${slot.thinking ? ` (${slot.thinking})` : ""}`;
             return theme.fg(active ? "accent" : "muted", label);
           });
@@ -248,6 +304,14 @@ export function registerModelHotkeys(
             ctx.ui.notify(`Slot ${key} is unassigned. Use /model-hotkeys ${key}.`, "info");
             return;
           }
+          const scope = scopedSnapshot(ctx);
+          if (scope.length && !modelInScope({ provider: slot.provider, id: slot.model }, scope)) {
+            ctx.ui.notify(
+              `Slot ${key} is outside the current model scope (${slot.provider}/${slot.model}); refusing to switch.`,
+              "warning",
+            );
+            return;
+          }
           const model = ctx.modelRegistry.find(slot.provider, slot.model);
           if (!model) {
             ctx.ui.notify(
@@ -295,19 +359,229 @@ export function registerModelHotkeys(
   }
 
   pi.registerCommand("model-hotkeys", {
-    description: "Configure model slots 1–9 and hotkey modifier; optionally pass a slot number",
+    description:
+      "Configure model slots 1–9, modifier, labels, and display style; optionally pass a slot and search query",
     async handler(args, ctx) {
-      if (!ctx.hasUI) return;
-      if (configuring || switching) return;
-      const argument = args.trim();
-      if (argument && !/^[1-9]$/.test(argument)) {
-        ctx.ui.notify("Usage: /model-hotkeys [1-9]", "warning");
+      if (!ctx.hasUI || configuring || switching) return;
+      const parsed = parseCommandArgs(args);
+      if (!parsed) {
+        ctx.ui.notify("Usage: /model-hotkeys [1-9] [model search query]", "warning");
         return;
       }
       configuring = true;
       const signal = lifecycle.signal;
+
+      const chooseModel = async (query: string | undefined): Promise<PickerModel | undefined> => {
+        const allModels = ctx.modelRegistry.getAvailable() as PickerModel[];
+        let scoped = scopedSnapshot(ctx);
+        let refreshedModels = allModels;
+        if (ctx.mode === "tui" && typeof ctx.ui.custom === "function") {
+          const selectedKey = await ctx.ui.custom<string | undefined>(
+            (tui, theme, keybindings, done) =>
+              new ModelPickerComponent(
+                {
+                  tui,
+                  theme,
+                  keybindings,
+                  models: refreshedModels,
+                  scopedModels: scoped,
+                  scoped: scoped.length > 0,
+                  query,
+                  current: ctx.model as PickerModel | undefined,
+                  slots: readConfig(path).slots,
+                  lifecycle: signal,
+                  refresh: async (refreshSignal) => {
+                    const cached = ctx.modelRegistry.getAvailable() as PickerModel[];
+                    try {
+                      const result = await ctx.modelRegistry.refresh({
+                        allowNetwork: true,
+                        force: true,
+                        signal: refreshSignal,
+                      });
+                      if (refreshSignal.aborted || signal.aborted) {
+                        return { models: cached, status: "Refresh cancelled" };
+                      }
+                      const models = ctx.modelRegistry.getAvailable() as PickerModel[];
+                      const updatedScoped = scoped.map((entry) => ({
+                        ...entry,
+                        model: (ctx.modelRegistry.find(entry.model.provider, entry.model.id) ??
+                          entry.model) as PickerModel,
+                      }));
+                      scoped = updatedScoped;
+                      const errors = result.errors?.size ?? 0;
+                      return {
+                        models,
+                        scopedModels: updatedScoped,
+                        status:
+                          result.aborted || refreshSignal.aborted
+                            ? "Refresh cancelled"
+                            : errors
+                              ? `Refresh partially completed (${errors} provider error${errors === 1 ? "" : "s"}); cached models remain available`
+                              : "Model catalogue refreshed successfully",
+                      };
+                    } catch (error) {
+                      if (refreshSignal.aborted || signal.aborted) {
+                        return { models: cached, status: "Refresh cancelled" };
+                      }
+                      if (
+                        error instanceof Error &&
+                        (error.name === "TimeoutError" ||
+                          /timed? ?out|timeout/i.test(error.message))
+                      ) {
+                        return {
+                          models: cached,
+                          status: "Refresh timed out; cached models remain available",
+                        };
+                      }
+                      return {
+                        models: cached,
+                        status: `Refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+                      };
+                    }
+                  },
+                  onRefresh: (outcome) => {
+                    refreshedModels = outcome.models;
+                    if (outcome.scopedModels) scoped = outcome.scopedModels;
+                  },
+                },
+                done,
+              ),
+          );
+          if (!alive(signal)) return undefined;
+          return modelFromKey(
+            [...refreshedModels, ...scoped.map((entry) => entry.model)],
+            selectedKey,
+          );
+        }
+
+        const source = scoped.length ? scoped.map((entry) => entry.model) : allModels;
+        if (!source.length) {
+          ctx.ui.notify(
+            scoped.length
+              ? "No models are present in the current scope."
+              : "No authenticated available models. Configure authentication with /login first.",
+            "warning",
+          );
+          return undefined;
+        }
+        const matching = query ? filterModels(source, query) : source;
+        if (!matching.length) {
+          ctx.ui.notify(`No models match “${query}”.`, "warning");
+          return undefined;
+        }
+        const scopedThinking = new Map(
+          scoped.map((entry) => [modelKey(entry.model), entry.thinkingLevel]),
+        );
+        const choices = flatModelChoices(matching, {
+          current: ctx.model as PickerModel | undefined,
+          slots: readConfig(path).slots,
+          scopedThinking,
+        });
+        const choice = await ctx.ui.select("Choose model", choices, { signal });
+        if (!alive(signal) || !choice) return undefined;
+        let target = matching.find(
+          (model) =>
+            flatModelChoices([model], {
+              current: ctx.model as PickerModel | undefined,
+              slots: readConfig(path).slots,
+              scopedThinking,
+            })[0] === choice,
+        );
+        // Accept old RPC clients that still send provider then model IDs, without exposing
+        // a provider-first picker in the new UI.
+        if (!target) {
+          const providerModels = matching.filter((model) => model.provider === choice);
+          if (providerModels.length) {
+            const id = await ctx.ui.select(
+              "Model (legacy client)",
+              providerModels.map((model) => model.id),
+              { signal },
+            );
+            target = providerModels.find((model) => model.id === id);
+          }
+        }
+        return target;
+      };
+
+      const confirmAndSave = async (
+        key: string,
+        target: PickerModel,
+        requestedThinking: (typeof levels)[number] | undefined,
+        label: string | undefined,
+      ): Promise<boolean> => {
+        if (!alive(signal)) return false;
+        const currentConfig = readConfig(path);
+        const savedThinking =
+          requestedThinking === undefined
+            ? undefined
+            : effectiveThinkingLevel(target, requestedThinking);
+        const duplicate = Object.entries(currentConfig.slots).find(
+          ([otherKey, other]) =>
+            otherKey !== key &&
+            other.provider === target.provider &&
+            other.model === target.id &&
+            other.thinking === savedThinking,
+        );
+        if (duplicate && typeof ctx.ui.confirm === "function") {
+          const acceptedDuplicate = await ctx.ui.confirm(
+            "Duplicate preset",
+            `Slot ${duplicate[0]} already has the identical ${target.provider}/${target.id} thinking preset. Save anyway?`,
+            { signal },
+          );
+          if (!alive(signal) || !acceptedDuplicate) return false;
+        }
+        const previewSlot: Slot = {
+          provider: target.provider,
+          model: target.id,
+          ...(savedThinking === undefined ? {} : { thinking: savedThinking }),
+          ...(label ? { label } : {}),
+        };
+        const previewConfig: Config = {
+          ...currentConfig,
+          slots: { ...currentConfig.slots, [key]: previewSlot },
+        };
+        const preview = previewLegend(
+          key,
+          previewSlot,
+          target,
+          ctx.model as PickerModel | undefined,
+          pi.getThinkingLevel(),
+          modifier,
+          legendModelLabel(previewConfig, key, previewSlot, (provider, model) =>
+            ctx.modelRegistry.find(provider, model),
+          ),
+        );
+        if (typeof ctx.ui.confirm === "function") {
+          const accepted = await ctx.ui.confirm(
+            `Save slot ${key}`,
+            `${preview}${duplicate ? " [duplicate]" : ""}${ctx.model && modelKey(target) === modelKey(ctx.model) ? " [current model]" : ""}`,
+            { signal },
+          );
+          if (!alive(signal) || !accepted) return false;
+        }
+        updateConfig(path, (next) => {
+          const old = next.slots[key];
+          next.slots[key] = {
+            provider: target.provider,
+            model: target.id,
+            ...(requestedThinking === undefined
+              ? {}
+              : { thinking: effectiveThinkingLevel(target, requestedThinking) }),
+            ...(label ? { label } : old?.label ? { label: old.label } : {}),
+          };
+        });
+        refreshLegend(ctx);
+        ctx.ui.notify(
+          `Slot ${key} saved: ${effectivePresetDescription(target, requestedThinking, pi.getThinkingLevel())}`,
+          "info",
+        );
+        return true;
+      };
+
       try {
+        let key = parsed.slot;
         while (true) {
+          if (!alive(signal)) return;
           const config = readConfig(path);
           const rows = Array.from(
             { length: 9 },
@@ -316,20 +590,23 @@ export function registerModelHotkeys(
           const modifierRow = `Modifier: ${config.modifier} (active: ${modifier})`;
           const modelNameStyleRow = `Model names: ${styleChoices[config.modelNameStyle ?? "short"]}`;
           const scrollRow = `Alt+wheel: ${config.altScroll ? "on" : "off"} (fullscreen model strip)`;
-          const choice = argument
-            ? rows[Number(argument) - 1]
+          const choice = key
+            ? rows[Number(key) - 1]
             : await ctx.ui.select(
                 "Model hotkeys — select a slot to configure",
                 [...rows, modifierRow, modelNameStyleRow, scrollRow, "Done"],
                 { signal },
               );
-          if (!alive(signal)) return;
-          if (!choice || choice === "Done") return;
+          if (!alive(signal) || !choice || choice === "Done") return;
           if (choice === scrollRow) {
             updateConfig(path, (next) => {
               next.altScroll = !next.altScroll;
             });
             refreshLegend(ctx);
+            ctx.ui.notify(
+              `Alt+wheel model switching ${config.altScroll ? "disabled" : "enabled"}.`,
+              "info",
+            );
             continue;
           }
           if (choice === modifierRow) {
@@ -340,9 +617,7 @@ export function registerModelHotkeys(
             );
             if (!alive(signal)) return;
             if (selected) {
-              updateConfig(path, (next) => {
-                next.modifier = selected as Config["modifier"];
-              });
+              updateConfig(path, (next) => (next.modifier = selected as Config["modifier"]));
               refreshLegend(ctx);
               ctx.ui.notify(
                 "Modifier saved. Run /reload in each open session to activate it.",
@@ -360,135 +635,109 @@ export function registerModelHotkeys(
             if (!alive(signal)) return;
             const style = modelNameStyles.find((candidate) => styleChoices[candidate] === selected);
             if (style) {
-              updateConfig(path, (next) => {
-                next.modelNameStyle = style;
-              });
+              updateConfig(path, (next) => (next.modelNameStyle = style));
               refreshLegend(ctx);
               ctx.ui.notify(`Model names now use the ${style} style.`, "info");
             }
             continue;
           }
-          const key = String(rows.indexOf(choice) + 1);
+          key = String(rows.indexOf(choice) + 1);
           const action = await ctx.ui.select(
             `Configure slot ${key}`,
-            ["Choose model", "Use current model and thinking", "Set/remove label", "Clear slot"],
+            [
+              "Choose model",
+              "Use current model and thinking",
+              "Copy preset from another slot",
+              "Set/remove label",
+              "Clear slot",
+            ],
             { signal },
           );
           if (!alive(signal)) return;
-          if (action === "Set/remove label") {
-            const current = config.slots[key]?.label ?? "";
-            const label = await ctx.ui.input(`Label for slot ${key} (blank removes it)`, current, {
-              signal,
-            });
-            if (!alive(signal)) return;
-            if (label === undefined) {
-              if (argument) return;
-              continue;
-            }
-            const trimmed = label.trim();
-            if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
-              ctx.ui.notify("Labels cannot contain control characters.", "warning");
-              continue;
-            }
-            if (!config.slots[key]) {
-              ctx.ui.notify(
-                `Slot ${key} is unassigned; choose a model before setting a label.`,
-                "warning",
-              );
-              if (argument) return;
-              continue;
-            }
-            updateConfig(path, (next) => {
-              const existing = next.slots[key];
-              if (!existing) return;
-              if (trimmed) existing.label = trimmed;
-              else delete existing.label;
-            });
-            refreshLegend(ctx);
-            ctx.ui.notify(
-              trimmed ? `Slot ${key} labeled “${trimmed}”.` : `Slot ${key} label removed.`,
-              "info",
-            );
-            if (argument) return;
-            continue;
-          }
-          let slot: Slot | undefined;
+          const old = readConfig(path).slots[key];
           if (action === "Clear slot") {
-            updateConfig(path, (next) => {
-              delete next.slots[key];
-            });
+            updateConfig(path, (next) => delete next.slots[key!]);
             refreshLegend(ctx);
             ctx.ui.notify(`Slot ${key} cleared.`, "info");
-          } else if (action === "Use current model and thinking") {
-            if (ctx.model)
-              slot = {
-                provider: ctx.model.provider,
-                model: ctx.model.id,
-                thinking: pi.getThinkingLevel(),
-              };
-            else ctx.ui.notify("No model is selected.", "warning");
-          } else if (action === "Choose model") {
-            const models = ctx.modelRegistry.getAvailable();
-            const providers = [...new Set(models.map((model) => model.provider))].sort();
-            if (!providers.length)
-              ctx.ui.notify(
-                "No available models. Configure authentication with /login first.",
-                "warning",
-              );
+          } else if (action === "Set/remove label") {
+            const label = await ctx.ui.input(
+              `Label for slot ${key} (blank removes it)`,
+              old?.label ?? "",
+              { signal },
+            );
+            if (!alive(signal)) return;
+            if (label !== undefined) {
+              const trimmed = label.trim();
+              if (/[\u0000-\u001f\u007f]/.test(trimmed))
+                ctx.ui.notify("Labels cannot contain control characters.", "warning");
+              else if (old) {
+                updateConfig(path, (next) => {
+                  if (!next.slots[key!]) return;
+                  if (trimmed) next.slots[key!].label = trimmed;
+                  else delete next.slots[key!].label;
+                });
+                refreshLegend(ctx);
+              } else ctx.ui.notify(`Slot ${key} is unassigned; choose a model first.`, "warning");
+            }
+          } else if (action === "Copy preset from another slot") {
+            const sources = Object.entries(readConfig(path).slots)
+              .filter(([sourceKey, source]) => sourceKey !== key && !!source)
+              .map(([sourceKey, source]) => `${sourceKey}: ${describe(source)}`);
+            if (!sources.length) ctx.ui.notify("No other assigned slots to copy.", "warning");
             else {
-              const provider = await ctx.ui.select("Provider", providers, { signal });
-              if (!alive(signal)) return;
-              if (provider) {
-                const model = await ctx.ui.select(
-                  "Model",
-                  models
-                    .filter((m) => m.provider === provider)
-                    .map((m) => m.id)
-                    .sort(),
-                  { signal },
+              const sourceChoice = await ctx.ui.select(`Copy preset to slot ${key}`, sources, {
+                signal,
+              });
+              if (!alive(signal) || !sourceChoice) return;
+              const sourceKey = sourceChoice.slice(0, 1);
+              const source = readConfig(path).slots[sourceKey];
+              if (source) {
+                const sourceModel = ctx.modelRegistry.find(source.provider, source.model) as
+                  | PickerModel
+                  | undefined;
+                await confirmAndSave(
+                  key,
+                  sourceModel ?? {
+                    provider: source.provider,
+                    id: source.model,
+                    name: source.model,
+                  },
+                  source.thinking,
+                  old?.label,
                 );
-                if (!alive(signal)) return;
-                if (model) {
-                  const target = models.find((m) => m.provider === provider && m.id === model);
-                  const supported = levels.filter((level) => {
-                    if (!target?.reasoning) return level === "off";
-                    return (
-                      target.thinkingLevelMap?.[level] !== null &&
-                      ((level !== "xhigh" && level !== "max") ||
-                        target.thinkingLevelMap?.[level] !== undefined)
-                    );
-                  });
-                  const thinking = await ctx.ui.select(
-                    "Thinking level (clamped to model capabilities)",
-                    ["Keep current", ...supported],
-                    { signal },
-                  );
-                  if (!alive(signal)) return;
-                  if (thinking)
-                    slot = {
-                      provider,
-                      model,
-                      ...(thinking === "Keep current"
-                        ? {}
-                        : { thinking: thinking as Slot["thinking"] }),
-                    };
-                }
               }
             }
+          } else if (action === "Use current model and thinking") {
+            const current = ctx.model as PickerModel | undefined;
+            if (current) await confirmAndSave(key, current, pi.getThinkingLevel(), old?.label);
+            else ctx.ui.notify("No model is selected.", "warning");
+          } else if (action === "Choose model") {
+            const target = await chooseModel(parsed.slot ? parsed.query : undefined);
+            if (target) {
+              const scopedLevel = scopedSnapshot(ctx).find(
+                (entry) => modelKey(entry.model) === modelKey(target),
+              )?.thinkingLevel;
+              const choices = thinkingChoices(target, pi.getThinkingLevel(), scopedLevel);
+              const selected = await ctx.ui.select(
+                "Thinking level (supported by target model)",
+                choices,
+                { signal },
+              );
+              if (!alive(signal) || !selected) return;
+              const keep = selected.startsWith("Keep current");
+              const requested = keep
+                ? undefined
+                : levels.find((level) => selected.startsWith(level));
+              if (requested === undefined && !keep) continue;
+              await confirmAndSave(key, target, requested, old?.label);
+            }
           }
-          if (slot) {
-            updateConfig(path, (next) => {
-              const old = next.slots[key];
-              next.slots[key] = { ...slot!, ...(old?.label ? { label: old.label } : {}) };
-            });
-            refreshLegend(ctx);
-            ctx.ui.notify(`Slot ${key} saved: ${describe(slot)}`, "info");
-          }
-          if (argument) return;
+          if (parsed.slot) return;
+          key = undefined;
         }
       } catch (error) {
-        if (!alive(signal)) return;
-        ctx.ui.notify(`Cannot configure model hotkeys: ${error}. Config: ${path}`, "error");
+        if (alive(signal))
+          ctx.ui.notify(`Cannot configure model hotkeys: ${error}. Config: ${path}`, "error");
       } finally {
         if (alive(signal)) {
           configuring = false;

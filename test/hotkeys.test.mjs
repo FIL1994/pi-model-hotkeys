@@ -4,7 +4,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig, updateConfig } from "../extensions/config.ts";
-import { compactModelName, registerModelHotkeys } from "../extensions/model-hotkeys.ts";
+import {
+  compactModelName,
+  parseCommandArgs,
+  registerModelHotkeys,
+} from "../extensions/model-hotkeys.ts";
+import { flatModelChoices } from "../extensions/model-picker.ts";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 function fixture(t) {
@@ -14,6 +19,8 @@ function fixture(t) {
   const shortcuts = new Map();
   const commands = new Map();
   const notifications = [];
+  const confirmations = [];
+  const confirmationPrompts = [];
   const selections = [];
   const changes = [];
   const watcherCallbacks = [];
@@ -41,6 +48,7 @@ function fixture(t) {
     hasUI: true,
     isIdle: () => true,
     model,
+    scopedModels: [],
     modelRegistry: {
       find: (provider, id) =>
         models.find((candidate) => candidate.provider === provider && candidate.id === id),
@@ -54,6 +62,10 @@ function fixture(t) {
           typeof factory === "function" ? factory(tui, { fg: (_color, text) => text }) : factory;
       },
       notify: (...args) => notifications.push(args),
+      confirm: async (...args) => {
+        confirmationPrompts.push(args);
+        return confirmations.length ? confirmations.shift() : true;
+      },
       select: async (_title, options) => {
         const selection = selections.shift();
         return typeof selection === "number" ? options[selection] : selection;
@@ -92,6 +104,8 @@ function fixture(t) {
     shortcuts,
     commands,
     notifications,
+    confirmations,
+    confirmationPrompts,
     selections,
     changes,
     register,
@@ -584,4 +598,121 @@ test("overlapping keypresses do not race model changes", async (t) => {
   assert.equal(calls, 1);
   release(true);
   await first;
+});
+
+test("shortcut refuses an assigned model outside a non-empty scoped model list", async (t) => {
+  const f = fixture(t);
+  f.ctx.scopedModels = [{ model: { provider: "other", id: "allowed", name: "Allowed" } }];
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { provider: f.ctx.model.provider, model: f.ctx.model.id };
+  });
+  await f.press("alt+1");
+  assert.equal(f.changes.length, 0);
+  assert.match(f.notifications.at(-1)[0], /outside the current model scope/);
+});
+
+test("command parses a slot and optional prefilled search", () => {
+  assert.deepEqual(parseCommandArgs(""), {});
+  assert.deepEqual(parseCommandArgs("3"), { slot: "3", query: undefined });
+  assert.deepEqual(parseCommandArgs(" 3   gpt luna "), { slot: "3", query: "gpt luna" });
+  assert.equal(parseCommandArgs("gpt luna"), undefined);
+  assert.equal(parseCommandArgs("10 luna"), undefined);
+});
+
+test("RPC fallback is flat, scoped by default, and displays name/provider/id", async (t) => {
+  const f = fixture(t);
+  const second = { provider: "other", id: "other-model", name: "Other Friendly" };
+  f.models.push(second);
+  f.ctx.scopedModels = [{ model: f.ctx.model, thinkingLevel: "low" }];
+  f.ctx.mode = "rpc";
+  const choice = flatModelChoices([f.ctx.model], {
+    current: f.ctx.model,
+    scopedThinking: new Map([[`${f.ctx.model.provider}\u0000${f.ctx.model.id}`, "low"]]),
+  })[0];
+  f.selections.push("Choose model", choice, "Keep current (effective: medium)");
+  await f.configure("1");
+  assert.deepEqual(readConfig(f.path).slots[1], {
+    provider: f.ctx.model.provider,
+    model: f.ctx.model.id,
+  });
+});
+
+test("RPC fallback applies the command's prefilled search and previews the active modifier", async (t) => {
+  const f = fixture(t);
+  f.ctx.mode = "rpc";
+  updateConfig(f.path, (config) => {
+    config.modifier = "ctrl";
+  });
+  const choice = flatModelChoices([f.ctx.model], { current: f.ctx.model })[0];
+  f.selections.push("Choose model", choice, "Keep current (effective: medium)");
+  await f.configure("1 gpt luna");
+  assert.equal(readConfig(f.path).slots[1].model, f.ctx.model.id);
+  assert.match(f.confirmationPrompts.at(-1)[1], /alt\+1/);
+  assert.doesNotMatch(f.confirmationPrompts.at(-1)[1], /ctrl\+1/);
+
+  f.notifications.length = 0;
+  f.selections.push("Choose model");
+  await f.configure("2 definitely-missing");
+  assert.equal(readConfig(f.path).slots[2], undefined);
+  assert.match(f.notifications.at(-1)[0], /No models match/);
+});
+
+test("copy preserves the target label and duplicate confirmation can reject or accept", async (t) => {
+  const f = fixture(t);
+  updateConfig(f.path, (c) => {
+    c.slots[1] = {
+      provider: f.ctx.model.provider,
+      model: f.ctx.model.id,
+      thinking: "medium",
+      label: "Source",
+    };
+    c.slots[2] = { provider: "other", model: "old", label: "Target" };
+  });
+  f.confirmations.push(true);
+  f.selections.push(
+    "Copy preset from another slot",
+    "1: Source — openai-codex/gpt-5.6-luna (medium)",
+  );
+  await f.configure("2");
+  assert.deepEqual(readConfig(f.path).slots[2], {
+    provider: f.ctx.model.provider,
+    model: f.ctx.model.id,
+    thinking: "medium",
+    label: "Target",
+  });
+  assert.doesNotMatch(f.confirmationPrompts.at(-1)[1], /Source/);
+  assert.match(f.confirmationPrompts.at(-1)[1], /Target/);
+
+  f.confirmations.push(false);
+  f.selections.push("Use current model and thinking");
+  await f.configure("3");
+  assert.equal(readConfig(f.path).slots[3], undefined);
+});
+
+test("save preview can reject or accept a non-duplicate preset", async (t) => {
+  const f = fixture(t);
+  f.confirmations.push(false);
+  f.selections.push("Use current model and thinking");
+  await f.configure("1");
+  assert.equal(readConfig(f.path).slots[1], undefined);
+  assert.equal(f.confirmationPrompts.at(-1)[0], "Save slot 1");
+
+  f.confirmations.push(true);
+  f.selections.push("Use current model and thinking");
+  await f.configure("1");
+  assert.equal(readConfig(f.path).slots[1].model, f.ctx.model.id);
+});
+
+test("save preview uses the legend's collision-qualified model label", async (t) => {
+  const f = fixture(t);
+  updateConfig(f.path, (config) => {
+    config.slots[1] = { provider: "other", model: f.ctx.model.id };
+  });
+  f.confirmations.push(true);
+  f.selections.push("Use current model and thinking");
+  await f.configure("2");
+  assert.match(
+    f.confirmationPrompts.at(-1)[1],
+    new RegExp(`openai-codex/${f.ctx.model.id.replaceAll(".", "\\.")}`),
+  );
 });
