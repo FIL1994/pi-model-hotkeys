@@ -35,10 +35,14 @@
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test": "node --experimental-strip-types --test test/*.test.mjs"
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2",
     "@earendil-works/pi-coding-agent": "0.85.1",
+    "lefthook": "2.1.12",
     "oxfmt": "^0.67.0",
     "oxlint": "^1.82.0",
     "typescript": "7.0.2"
