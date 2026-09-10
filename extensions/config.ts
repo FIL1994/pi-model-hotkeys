@@ -4,8 +4,10 @@ import { randomUUID } from "node:crypto";
 
 export const modifiers = ["alt", "ctrl", "ctrl+alt", "alt+shift"] as const;
 export const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const modelNameStyles = ["full", "friendly", "short", "compact"] as const;
+export type ModelNameStyle = typeof modelNameStyles[number];
 export type Slot = { provider: string; model: string; thinking?: typeof levels[number]; label?: string };
-export type Config = { modifier: typeof modifiers[number]; slots: Record<string, Slot> };
+export type Config = { modifier: typeof modifiers[number]; modelNameStyle?: ModelNameStyle; slots: Record<string, Slot> };
 
 export function readConfig(path: string): Config {
   let raw: string;
@@ -26,7 +28,8 @@ export function readConfig(path: string): Config {
 
 export function validateConfig(value: unknown): asserts value is Config {
   if (!value || !modifiers.includes((value as Config).modifier) || !(value as Config).slots ||
-      typeof (value as Config).slots !== "object" || Array.isArray((value as Config).slots)) {
+      typeof (value as Config).slots !== "object" || Array.isArray((value as Config).slots) ||
+      ((value as Config).modelNameStyle !== undefined && !modelNameStyles.includes((value as Config).modelNameStyle!))) {
     throw new Error("Invalid model-hotkeys config");
   }
   for (const [key, slot] of Object.entries((value as Config).slots) as [string, Slot][]) {

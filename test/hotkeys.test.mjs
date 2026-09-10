@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig, updateConfig } from "../extensions/config.ts";
-import { registerModelHotkeys } from "../extensions/model-hotkeys.ts";
+import { compactModelName, registerModelHotkeys } from "../extensions/model-hotkeys.ts";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 function fixture(t) {
@@ -19,7 +19,8 @@ function fixture(t) {
   const watcherCallbacks = [];
   const events = new Map();
   let widget;
-  const model = { provider: "openai-codex", id: "gpt-5.6-luna" };
+  const model = { provider: "openai-codex", id: "gpt-5.6-luna", name: "GPT-5.6 Luna" };
+  const models = [model];
   let thinking = "medium";
   const pi = {
     on: (name, handler) => events.set(name, handler),
@@ -35,8 +36,8 @@ function fixture(t) {
     isIdle: () => true,
     model,
     modelRegistry: {
-      find: (provider, id) => provider === model.provider && id === model.id ? model : undefined,
-      getAvailable: () => [model],
+      find: (provider, id) => models.find(candidate => candidate.provider === provider && candidate.id === id),
+      getAvailable: () => models,
     },
     ui: {
       setWidget: (name, factory, options) => {
@@ -58,7 +59,7 @@ function fixture(t) {
   });
   register();
   t.after(() => events.get("session_shutdown")?.({}, ctx));
-  return { path, pi, ctx, shortcuts, commands, notifications, selections, changes, register,
+  return { path, pi, ctx, models, shortcuts, commands, notifications, selections, changes, register,
     triggerWatch: () => watcherCallbacks.forEach(listener => listener()),
     emit: name => events.get(name)?.({}, ctx),
     legend: (width = 1000) => Array.isArray(widget) ? widget : widget?.render(width),
@@ -66,6 +67,58 @@ function fixture(t) {
     press: key => shortcuts.get(key).handler(ctx),
   };
 }
+
+test("compact model names retain useful family context", () => {
+  assert.equal(compactModelName("gpt-5.6-luna"), "luna");
+  assert.equal(compactModelName("claude-sonnet-4-5"), "sonnet");
+  assert.equal(compactModelName("gemini-2.5-pro"), "gemini-pro");
+  assert.equal(compactModelName("namespace/gpt-5.4"), "gpt-5.4");
+  assert.equal(compactModelName("codestral-latest"), "codestral");
+});
+
+test("model name style is configurable and updates the legend immediately", async t => {
+  const f = fixture(t);
+  updateConfig(f.path, c => { c.slots[1] = { provider: f.ctx.model.provider, model: f.ctx.model.id }; });
+  f.emit("model_select");
+
+  const chooseStyle = async (current, selected) => {
+    f.selections.push(`Model names: ${current}`, selected, "Done");
+    await f.configure("");
+  };
+
+  await chooseStyle("Short — model ID", "Full — provider/model ID");
+  assert.match(f.legend().join(""), /openai-codex\/gpt-5\.6-luna/);
+  await chooseStyle("Full — provider/model ID", "Friendly — catalogue name");
+  assert.match(f.legend().join(""), /GPT-5\.6 Luna/);
+  await chooseStyle("Friendly — catalogue name", "Compact — family name");
+  assert.match(f.legend().join(""), /alt\+1 luna/);
+  assert.equal(readConfig(f.path).modelNameStyle, "compact");
+});
+
+test("compact and friendly name collisions are qualified", t => {
+  const f = fixture(t);
+  f.models.push(
+    { provider: "openai", id: "gpt-5.6-luna", name: "GPT-5.6 Luna" },
+    { provider: "openai-codex", id: "gpt-5.7-luna", name: "GPT-5.7 Luna" },
+  );
+  updateConfig(f.path, c => {
+    c.modelNameStyle = "compact";
+    c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna" };
+    c.slots[2] = { provider: "openai", model: "gpt-5.6-luna" };
+    c.slots[3] = { provider: "openai-codex", model: "gpt-5.7-luna" };
+  });
+  f.emit("model_select");
+  let text = f.legend().join("");
+  assert.match(text, /alt\+1 openai-codex\/gpt-5\.6-luna/);
+  assert.match(text, /alt\+2 openai\/luna/);
+  assert.match(text, /alt\+3 openai-codex\/gpt-5\.7-luna/);
+
+  updateConfig(f.path, c => { c.modelNameStyle = "friendly"; });
+  f.emit("model_select");
+  text = f.legend().join("");
+  assert.match(text, /GPT-5\.6 Luna — openai-codex\/gpt-5\.6-luna/);
+  assert.match(text, /GPT-5\.6 Luna — openai\/gpt-5\.6-luna/);
+});
 
 test("labels can be set, preserved on reassignment, and removed", async t => {
   const f = fixture(t);
@@ -120,6 +173,19 @@ test("invalid updates preserve the original config", t => {
     assert.throws(() => updateConfig(f.path, c => Object.assign(c.slots[1], invalid)));
     assert.equal(readFileSync(f.path, "utf8"), original);
   }
+  assert.throws(() => updateConfig(f.path, c => { c.modelNameStyle = "tiny"; }));
+  assert.equal(readFileSync(f.path, "utf8"), original);
+});
+
+test("legacy configs default to short model names", t => {
+  const f = fixture(t);
+  writeFileSync(f.path, JSON.stringify({
+    modifier: "alt",
+    slots: { 1: { provider: "openai-codex", model: "gpt-5.6-luna" } },
+  }));
+  assert.equal(readConfig(f.path).modelNameStyle, undefined);
+  f.emit("model_select");
+  assert.match(f.legend().join(""), /alt\+1 gpt-5\.6-luna/);
 });
 
 test("picker only offers supported thinking levels", async t => {

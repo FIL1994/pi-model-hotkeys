@@ -2,11 +2,40 @@ import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil
 import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { watchFile, unwatchFile } from "node:fs";
 import { join } from "node:path";
-import { levels, modifiers, readConfig, updateConfig, type Config, type Slot } from "./config.ts";
+import {
+  levels, modelNameStyles, modifiers, readConfig, updateConfig,
+  type Config, type ModelNameStyle, type Slot,
+} from "./config.ts";
 
 const describe = (slot?: Slot) => slot
   ? `${slot.label ? `${slot.label} — ` : ""}${slot.provider}/${slot.model}${slot.thinking ? ` (${slot.thinking})` : ""}`
   : "Unassigned";
+
+const styleChoices: Record<ModelNameStyle, string> = {
+  full: "Full — provider/model ID",
+  friendly: "Friendly — catalogue name",
+  short: "Short — model ID",
+  compact: "Compact — family name",
+};
+
+const versionToken = /^(?:v?\d+(?:[._]\d+)*(?:b|k)?|\d{8})$/i;
+const suffixNoise = new Set(["latest", "preview", "experimental", "exp"]);
+
+/** Derive a compact, stable family label from a model ID. */
+export function compactModelName(modelId: string): string {
+  const base = modelId.split("/").at(-1) ?? modelId;
+  const tokens = base.split("-").filter(Boolean);
+  const meaningful = tokens.filter(token => !versionToken.test(token) && !suffixNoise.has(token.toLowerCase()));
+  if (meaningful.length < 2) {
+    const removedOnlyNoise = tokens.some(token => suffixNoise.has(token.toLowerCase())) &&
+      !tokens.some(token => versionToken.test(token));
+    return meaningful.length === 1 && removedOnlyNoise ? meaningful[0] : base;
+  }
+
+  const root = meaningful[0].toLowerCase();
+  const family = meaningful.slice(root === "gpt" || root === "claude" ? 1 : 0);
+  return family.length ? family.join("-") : base;
+}
 
 type Watch = (path: string, options: { persistent: boolean; interval: number }, listener: () => void) => (() => void);
 
@@ -36,9 +65,28 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string, watch: Watc
         const labels = entries.map(([key, slot]) => {
           const active = ctx.model?.provider === slot.provider && ctx.model?.id === slot.model &&
             (slot.thinking === undefined || slot.thinking === pi.getThinkingLevel());
-          // Keep the model ID intact; qualify only collisions across providers.
-          const ambiguous = entries.some(([, other]) => other.model === slot.model && other.provider !== slot.provider);
-          const modelLabel = ambiguous ? `${slot.provider}/${slot.model}` : slot.model;
+          const style = config.modelNameStyle ?? "short";
+          const others = entries.map(([, other]) => other).filter(other => !other.label && other !== slot);
+          const sameTarget = (other: Slot) => other.provider === slot.provider && other.model === slot.model;
+          let modelLabel: string;
+          if (style === "full") {
+            modelLabel = `${slot.provider}/${slot.model}`;
+          } else if (style === "friendly") {
+            const friendly = ctx.modelRegistry.find(slot.provider, slot.model)?.name || slot.model;
+            const ambiguous = others.some(other => !sameTarget(other) &&
+              (ctx.modelRegistry.find(other.provider, other.model)?.name || other.model) === friendly);
+            modelLabel = ambiguous ? `${friendly} — ${slot.provider}/${slot.model}` : friendly;
+          } else if (style === "compact") {
+            const compact = compactModelName(slot.model);
+            const collisions = others.filter(other => !sameTarget(other) && compactModelName(other.model) === compact);
+            if (!collisions.length) modelLabel = compact;
+            else if (collisions.every(other => other.provider !== slot.provider)) modelLabel = `${slot.provider}/${compact}`;
+            else modelLabel = `${slot.provider}/${slot.model}`;
+          } else {
+            // Keep the model ID intact; qualify only collisions across providers.
+            const ambiguous = others.some(other => other.model === slot.model && other.provider !== slot.provider);
+            modelLabel = ambiguous ? `${slot.provider}/${slot.model}` : slot.model;
+          }
           const label = `${active ? "● " : ""}${modifier}+${key} ${slot.label ?? modelLabel}${slot.thinking ? ` (${slot.thinking})` : ""}`;
           return theme.fg(active ? "accent" : "muted", label);
         });
@@ -138,8 +186,9 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string, watch: Watc
           const config = readConfig(path);
           const rows = Array.from({ length: 9 }, (_, i) => `${i + 1}: ${describe(config.slots[String(i + 1)])}`);
           const modifierRow = `Modifier: ${config.modifier} (active: ${modifier})`;
+          const modelNameStyleRow = `Model names: ${styleChoices[config.modelNameStyle ?? "short"]}`;
           const choice = argument ? rows[Number(argument) - 1] : await ctx.ui.select(
-            "Model hotkeys — select a slot to configure", [...rows, modifierRow, "Done"],
+            "Model hotkeys — select a slot to configure", [...rows, modifierRow, modelNameStyleRow, "Done"],
             { signal },
           );
           if (!alive(signal)) return;
@@ -151,6 +200,17 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string, watch: Watc
               updateConfig(path, next => { next.modifier = selected as Config["modifier"]; });
               refreshLegend(ctx);
               ctx.ui.notify("Modifier saved. Run /reload in each open session to activate it.", "info");
+            }
+            continue;
+          }
+          if (choice === modelNameStyleRow) {
+            const selected = await ctx.ui.select("Model name style", modelNameStyles.map(style => styleChoices[style]), { signal });
+            if (!alive(signal)) return;
+            const style = modelNameStyles.find(candidate => styleChoices[candidate] === selected);
+            if (style) {
+              updateConfig(path, next => { next.modelNameStyle = style; });
+              refreshLegend(ctx);
+              ctx.ui.notify(`Model names now use the ${style} style.`, "info");
             }
             continue;
           }

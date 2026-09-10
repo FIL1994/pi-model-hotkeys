@@ -26,7 +26,7 @@ Assignments take effect immediately. Switching keeps your conversation intact an
 
 | Command | Action |
 | --- | --- |
-| `/model-hotkeys` | Configure slots or change the modifier |
+| `/model-hotkeys` | Configure slots, model names, or the modifier |
 | `/model-hotkeys 3` | Configure slot 3 directly |
 
 To remove an assignment, select its slot and choose **Clear slot**. Unassigned keys show a setup hint rather than switching models.
@@ -42,6 +42,7 @@ alt+1 gpt-5.6-luna (low) | ● alt+2 gpt-5.6-luna (high) | ● alt+3 gpt-5.6-lun
 - **●** marks a matching provider, model, and thinking level. A slot set to **Keep current** matches that model at any thinking level, so more than one slot can be highlighted.
 - Provider names appear only when needed to distinguish the same model ID across providers.
 - A configured label replaces the model name in the legend; the configuration menu always retains slot IDs and full model details.
+- **Model names** in `/model-hotkeys` changes the global display style immediately: **Full** (`openai-codex/gpt-5.6-luna`), **Friendly** (`GPT-5.6 Luna`), **Short** (`gpt-5.6-luna`, the default), or **Compact** (`luna`). Compact names retain useful family context where needed, such as `gemini-pro`, and ambiguous names are qualified automatically.
 - Only assigned slots appear. The legend wraps on narrow terminals and leaves Pi's existing footer alone.
 - Changes made in another session appear within about a second.
 
@@ -97,3 +98,7 @@ pi install .
 ```
 
 Run `/reload` after changing extension code.
+
+## License
+
+[MIT](LICENSE)

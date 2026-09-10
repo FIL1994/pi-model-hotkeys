@@ -3,8 +3,31 @@
   "version": "0.1.0",
   "description": "Nine configurable model hotkeys for Pi.",
   "type": "module",
-  "keywords": ["pi-package", "pi-extension", "models", "hotkeys"],
-  "files": ["extensions", "README.md"],
+  "license": "MIT",
+  "author": "Phil Van Raalte",
+  "homepage": "https://github.com/FIL1994/pi-model-hotkeys#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FIL1994/pi-model-hotkeys.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FIL1994/pi-model-hotkeys/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "models",
+    "hotkeys",
+    "keyboard-shortcuts",
+    "terminal"
+  ],
+  "files": ["extensions", "README.md", "CHANGELOG.md", "LICENSE"],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "pi": { "extensions": ["./extensions/model-hotkeys.ts"] },
   "scripts": {
     "check": "tsc --noEmit",
