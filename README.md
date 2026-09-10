@@ -1,49 +1,97 @@
 # Pi Model Hotkeys
 
-Nine global model presets, selected with **Alt+1 … Alt+9**.
+Jump straight to your favorite models with **Alt+1–9**. Assign up to nine presets, optionally including a thinking level, and keep the shortcuts visible below Pi's editor.
 
-An always-visible legend below the editor (above the footer) shows every assigned
-shortcut, model ID, and optional thinking preset. Providers are omitted unless
-the same model ID is assigned through different providers; the configuration menu
-always shows full provider/model IDs. **●** highlights slots matching both the
-current provider/model and the saved thinking level. "Keep current" slots match
-any thinking level. If Pi clamps an unsupported preset level to a different level,
-that preset will not be highlighted; save the current model and thinking to capture
-the supported level instead. The legend wraps
-to fit the terminal without replacing Pi's footer or other extensions' statuses.
-It updates after configuration and model changes; edits from other sessions are
-picked up within about a second. Unassigned slots are omitted; when all are empty,
-the legend shows a `/model-hotkeys` setup hint. Pending modifier changes display
-the currently working keys and a `/reload` reminder.
+- **Direct switching** — no cycling through models or opening a picker.
+- **In-Pi configuration** — assign, replace, or clear slots with `/model-hotkeys`.
+- **Persistent presets** — use the same assignments across projects and sessions.
+- **Visible shortcuts** — a compact legend shows your assignments and highlights matching presets.
 
-## Install locally
-
-From the root of your local checkout:
+## Install
 
 ```sh
-pi install .
+pi install git:github.com/FIL1994/pi-model-hotkeys
 ```
 
-Then run `/reload` in Pi.
+Run `/reload` in an existing Pi session to load the extension.
 
-## Configure
+## Set up your shortcuts
 
-- `/model-hotkeys` opens the slot configuration menu.
-- `/model-hotkeys 3` edits slot 3 directly.
-- Choose a provider and model, save the current model and thinking level, or clear a slot.
-- Each slot can retain the current thinking level or request a specific level (Pi clamps it to the model's capabilities).
-- The modifier menu supports `alt`, `ctrl`, `ctrl+alt`, and `alt+shift`. Modifier changes require `/reload` in each open session.
+1. Run `/model-hotkeys`.
+2. Select a slot from **1–9**.
+3. Choose **Choose model** to pick a provider, model, and thinking setting—or **Use current model and thinking** to save your current setup.
+4. Close the menu and press **Alt + the slot number** to switch.
 
-Slot assignments take effect immediately, including in other sessions. Configuration is saved in `~/.pi/agent/model-hotkeys.json` (respects `PI_CODING_AGENT_DIR`). No credentials are stored. Invalid configuration is reported rather than overwritten.
+Assignments take effect immediately. Switching keeps your conversation intact and does not change Pi's default model for new sessions.
 
-Switching preserves the conversation and changes only the current session, not Pi's default model. Hotkeys refuse to switch while Pi is busy; wait for completion or abort first. Unassigned slots and missing models/authentication produce notifications.
+| Command | Action |
+| --- | --- |
+| `/model-hotkeys` | Configure slots or change the modifier |
+| `/model-hotkeys 3` | Configure slot 3 directly |
 
-Your terminal or desktop may intercept modifier+number shortcuts. Choose another modifier if necessary; modified digits are terminal-dependent. Check `/hotkeys` for conflicts with other extensions. Simultaneous configuration saves from different Pi processes are last-writer-wins; avoid editing in two sessions at once.
+To remove an assignment, select its slot and choose **Clear slot**. Unassigned keys show a setup hint rather than switching models.
+
+## Shortcut legend
+
+The legend sits **below the editor, above the footer**. For example, with three presets for the same model:
+
+```text
+alt+1 gpt-5.6-luna (low) | ● alt+2 gpt-5.6-luna (high) | ● alt+3 gpt-5.6-luna
+```
+
+- **●** marks a matching provider, model, and thinking level. A slot set to **Keep current** matches that model at any thinking level, so more than one slot can be highlighted.
+- Provider names appear only when needed to distinguish the same model ID across providers.
+- Only assigned slots appear. The legend wraps on narrow terminals and leaves Pi's existing footer alone.
+- Changes made in another session appear within about a second.
+
+## Thinking presets
+
+Choose **Keep current** to switch models without requesting a new thinking level, or save an explicit level such as `low`, `high`, or `xhigh`.
+
+Pi adjusts thinking levels to what the target model supports. If a saved level is unsupported and Pi selects a different one, that slot won't be highlighted as an exact match. Use **Use current model and thinking** to save the supported setting.
+
+## Change the modifier
+
+Open `/model-hotkeys` and select **Modifier**. Supported choices are:
+
+- `alt` — default
+- `ctrl`
+- `ctrl+alt`
+- `alt+shift`
+
+Run `/reload` in each open session after changing the modifier. Until then, the legend shows the working shortcuts and a reload reminder.
+
+## Troubleshooting
+
+**A shortcut does nothing**  
+Your terminal or desktop may intercept modifier+number keys. Try another modifier and check `/hotkeys` for conflicts.
+
+**Pi says it's busy**  
+Wait for the response to finish or abort it first. Hotkeys deliberately refuse to switch models during an active run.
+
+**A model is missing or authentication fails**  
+Use `/login` to configure provider access, then reassign the slot through `/model-hotkeys` if needed.
+
+## Configuration storage
+
+Assignments are stored in `~/.pi/agent/model-hotkeys.json`, or under `PI_CODING_AGENT_DIR` when set. The file contains model identifiers and preferences, not credentials.
+
+Invalid configuration is reported rather than overwritten. Avoid configuring slots in two sessions simultaneously: concurrent saves are last-writer-wins.
 
 ## Development
+
+From a local checkout:
 
 ```sh
 npm install
 npm run check
 npm test
 ```
+
+To load your checkout in Pi:
+
+```sh
+pi install .
+```
+
+Run `/reload` after changing extension code.
