@@ -27,8 +27,12 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
         if (width < 1) return [];
         const entries = Object.entries(config.slots).sort(([a], [b]) => Number(a) - Number(b));
         const labels = entries.map(([key, slot]) => {
-          const active = ctx.model?.provider === slot.provider && ctx.model?.id === slot.model;
-          const label = `${active ? "● " : ""}${modifier}+${key} ${describe(slot)}`;
+          const active = ctx.model?.provider === slot.provider && ctx.model?.id === slot.model &&
+            (slot.thinking === undefined || slot.thinking === pi.getThinkingLevel());
+          // Keep the model ID intact; qualify only collisions across providers.
+          const ambiguous = entries.some(([, other]) => other.model === slot.model && other.provider !== slot.provider);
+          const modelLabel = ambiguous ? `${slot.provider}/${slot.model}` : slot.model;
+          const label = `${active ? "● " : ""}${modifier}+${key} ${modelLabel}${slot.thinking ? ` (${slot.thinking})` : ""}`;
           return theme.fg(active ? "accent" : "muted", label);
         });
         const text = labels.length ? labels.join(theme.fg("dim", "  |  "))

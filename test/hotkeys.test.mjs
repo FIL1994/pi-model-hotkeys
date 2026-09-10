@@ -75,7 +75,7 @@ test("legend appears at startup and refreshes after saving, switching, and clear
   assert.match(f.legend().join(""), /no slots assigned.*\/model-hotkeys/);
   f.selections.push("Use current model and thinking");
   await f.configure("3");
-  assert.match(f.legend().join(""), /● alt\+3 openai-codex\/gpt-5.6-luna \(medium\)/);
+  assert.match(f.legend().join(""), /● alt\+3 gpt-5.6-luna \(medium\)/);
   f.ctx.model = { provider: "other", id: "other" };
   f.emit("model_select");
   assert.doesNotMatch(f.legend().join(""), /●/);
@@ -106,7 +106,7 @@ test("legend picks up external config edits and cleans up its watcher", async t 
   f.emit("session_start");
   updateConfig(f.path, c => { c.slots[4] = { provider: "external", model: "new-model" }; });
   await new Promise(resolve => setTimeout(resolve, 1500));
-  assert.match(f.legend().join(""), /alt\+4 external\/new-model/);
+  assert.match(f.legend().join(""), /alt\+4 new-model/);
   f.emit("session_shutdown");
   assert.equal(f.legend(), undefined);
 });
@@ -116,6 +116,43 @@ test("legend does not create TUI widgets in non-TUI modes", t => {
   f.ctx.mode = "rpc";
   f.emit("session_start");
   assert.equal(f.legend(), undefined);
+});
+
+test("legend highlights exact thinking presets and keep-current slots", t => {
+  const f = fixture(t);
+  updateConfig(f.path, c => {
+    const slot = { provider: "openai-codex", model: "gpt-5.6-luna" };
+    c.slots[1] = { ...slot, thinking: "medium" };
+    c.slots[2] = { ...slot, thinking: "high" };
+    c.slots[3] = slot;
+  });
+  f.emit("model_select");
+  let text = f.legend().join("");
+  assert.match(text, /● alt\+1/);
+  assert.doesNotMatch(text, /● alt\+2/);
+  assert.match(text, /● alt\+3/);
+  f.pi.setThinkingLevel("high");
+  f.emit("thinking_level_select");
+  text = f.legend().join("");
+  assert.doesNotMatch(text, /● alt\+1/);
+  assert.match(text, /● alt\+2/);
+  assert.match(text, /● alt\+3/);
+});
+
+test("compact labels qualify provider collisions without shortening model IDs", t => {
+  const f = fixture(t);
+  updateConfig(f.path, c => {
+    c.slots[1] = { provider: "openai-codex", model: "gpt-5.6-luna" };
+    c.slots[2] = { provider: "openai", model: "gpt-5.6-luna" };
+    c.slots[3] = { provider: "local", model: "namespace/unique-model" };
+  });
+  f.emit("model_select");
+  const text = f.legend().join("");
+  assert.match(text, /● alt\+1 openai-codex\/gpt-5.6-luna/);
+  assert.match(text, /alt\+2 openai\/gpt-5.6-luna/);
+  assert.doesNotMatch(text, /● alt\+2/);
+  assert.match(text, /alt\+3 namespace\/unique-model/);
+  assert.doesNotMatch(text, /local\//);
 });
 
 test("configure current model, persist, switch, and clear", async t => {

@@ -3,8 +3,13 @@
 Nine global model presets, selected with **Alt+1 … Alt+9**.
 
 An always-visible legend below the editor (above the footer) shows every assigned
-shortcut, provider/model, and optional thinking preset. **●** highlights slots for
-the current model (not necessarily the current thinking level). The legend wraps
+shortcut, model ID, and optional thinking preset. Providers are omitted unless
+the same model ID is assigned through different providers; the configuration menu
+always shows full provider/model IDs. **●** highlights slots matching both the
+current provider/model and the saved thinking level. "Keep current" slots match
+any thinking level. If Pi clamps an unsupported preset level to a different level,
+that preset will not be highlighted; save the current model and thinking to capture
+the supported level instead. The legend wraps
 to fit the terminal without replacing Pi's footer or other extensions' statuses.
 It updates after configuration and model changes; edits from other sessions are
 picked up within about a second. Unassigned slots are omitted; when all are empty,
