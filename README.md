@@ -86,14 +86,14 @@ Provider and model IDs cannot contain surrounding whitespace, and labels are tri
 From a local checkout:
 
 ```sh
-npm install
-npm run check
-npm run lint
-npm run format:check
-npm test
+bun install
+bun run check
+bun run lint
+bun run format:check
+bun run test
 ```
 
-Run `npm run format` to format the project in place.
+Run `bun run format` to format the project in place.
 
 To load your checkout in Pi:
 
