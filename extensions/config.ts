@@ -15,6 +15,7 @@ export type Slot = {
 export type Config = {
   modifier: (typeof modifiers)[number];
   modelNameStyle?: ModelNameStyle;
+  altScroll?: boolean;
   slots: Record<string, Slot>;
 };
 
@@ -47,6 +48,8 @@ export function validateConfig(value: unknown): asserts value is Config {
     !(value as Config).slots ||
     typeof (value as Config).slots !== "object" ||
     Array.isArray((value as Config).slots) ||
+    ((value as Config).altScroll !== undefined &&
+      typeof (value as Config).altScroll !== "boolean") ||
     ((value as Config).modelNameStyle !== undefined &&
       !modelNameStyles.includes((value as Config).modelNameStyle!))
   ) {

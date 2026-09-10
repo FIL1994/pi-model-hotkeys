@@ -63,6 +63,19 @@ Open `/model-hotkeys` and select **Modifier**. Supported choices are:
 
 Run `/reload` in each open session after changing the modifier. Until then, the legend shows the working shortcuts and a reload reminder.
 
+## Optional mouse-wheel switching
+
+In `/model-hotkeys`, toggle **Alt+wheel** on (off by default). In fullscreen mode
+(`pi --tui-mode fullscreen`), hold **Alt** and scroll **over the model strip**:
+up selects the previous assigned slot; down selects the next. Slots cycle in
+numeric order, skip unassigned numbers, and wrap around. If no slot matches the
+current model/thinking, down starts at the first slot and up at the last.
+
+This setting takes effect immediately and is stored as `"altScroll": true` in
+`model-hotkeys.json`. It always uses Alt, independently of the number-key modifier.
+Regular mode and scrolling without Alt are unchanged. Your terminal must forward
+Alt+wheel events, and switching still requires Pi to be idle.
+
 ## Troubleshooting
 
 **A shortcut does nothing**  

@@ -3,7 +3,7 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { wrapTextWithAnsi, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { watchFile, unwatchFile } from "node:fs";
 import { join } from "node:path";
 import {
@@ -72,6 +72,8 @@ export function registerModelHotkeys(
     /* Report on session start. */
   }
   let switching = false;
+  let lastSlot: string | undefined;
+  const slotHandlers = new Map<string, (ctx: ExtensionContext) => Promise<void>>();
   let configuring = false;
   let stopWatching: (() => void) | undefined;
   let lifecycle = new AbortController();
@@ -90,7 +92,44 @@ export function registerModelHotkeys(
     }
     ctx.ui.setWidget(
       "model-hotkeys",
-      (_tui, theme) => ({
+      (tui, theme) => ({
+        handleMouse(event: TuiMouseEvent) {
+          if (
+            tui.mode !== "fullscreen" ||
+            event.type !== "wheel" ||
+            !event.alt ||
+            event.ctrl ||
+            event.shift ||
+            !event.wheelDelta ||
+            lifecycle.signal.aborted
+          )
+            return;
+          try {
+            const current = readConfig(path);
+            if (!current.altScroll) return;
+            if (switching || configuring) return { handled: true };
+            const entries = Object.entries(current.slots).sort(([a], [b]) => Number(a) - Number(b));
+            if (!entries.length) return;
+            const matches = (slot: Slot) =>
+              ctx.model?.provider === slot.provider &&
+              ctx.model?.id === slot.model &&
+              (slot.thinking === undefined || slot.thinking === pi.getThinkingLevel());
+            let index = entries.findIndex(([key, slot]) => key === lastSlot && matches(slot));
+            if (index < 0) index = entries.findIndex(([, slot]) => matches(slot));
+            const direction = event.wheelDelta > 0 ? 1 : -1;
+            const next =
+              index < 0
+                ? direction > 0
+                  ? 0
+                  : entries.length - 1
+                : (index + direction + entries.length) % entries.length;
+            void slotHandlers.get(entries[next][0])?.(ctx);
+            return { handled: true };
+          } catch {
+            // Invalid config must not break terminal input or swallow scrolling.
+            return;
+          }
+        },
         render(width) {
           if (width < 1) return [];
           const entries = Object.entries(config.slots).sort(([a], [b]) => Number(a) - Number(b));
@@ -156,6 +195,7 @@ export function registerModelHotkeys(
     lifecycle.abort();
     lifecycle = new AbortController();
     switching = false;
+    lastSlot = undefined;
     configuring = false;
     stopWatching?.();
     refreshLegend(ctx);
@@ -189,68 +229,68 @@ export function registerModelHotkeys(
 
   for (let number = 1; number <= 9; number++) {
     const key = String(number);
-    pi.registerShortcut(
-      `${modifier}+${number}` as Parameters<ExtensionAPI["registerShortcut"]>[0],
-      {
-        description: `Switch to model slot ${number} (/model-hotkeys to configure)`,
-        async handler(ctx) {
-          if (switching || configuring) return;
-          if (!ctx.isIdle()) {
+    const shortcut = {
+      description: `Switch to model slot ${number} (/model-hotkeys to configure)`,
+      async handler(ctx: ExtensionContext) {
+        if (switching || configuring) return;
+        if (!ctx.isIdle()) {
+          ctx.ui.notify(
+            "Wait for Pi to finish, or abort the response before switching models.",
+            "warning",
+          );
+          return;
+        }
+        switching = true;
+        const signal = lifecycle.signal;
+        try {
+          const slot = readConfig(path).slots[key];
+          if (!slot) {
+            ctx.ui.notify(`Slot ${key} is unassigned. Use /model-hotkeys ${key}.`, "info");
+            return;
+          }
+          const model = ctx.modelRegistry.find(slot.provider, slot.model);
+          if (!model) {
             ctx.ui.notify(
-              "Wait for Pi to finish, or abort the response before switching models.",
-              "warning",
+              `Model not found: ${describe(slot)}. Reassign it with /model-hotkeys ${key}.`,
+              "error",
             );
             return;
           }
-          switching = true;
-          const signal = lifecycle.signal;
-          try {
-            const slot = readConfig(path).slots[key];
-            if (!slot) {
-              ctx.ui.notify(`Slot ${key} is unassigned. Use /model-hotkeys ${key}.`, "info");
-              return;
-            }
-            const model = ctx.modelRegistry.find(slot.provider, slot.model);
-            if (!model) {
-              ctx.ui.notify(
-                `Model not found: ${describe(slot)}. Reassign it with /model-hotkeys ${key}.`,
-                "error",
-              );
-              return;
-            }
-            if (!(await pi.setModel(model))) {
-              if (!alive(signal)) return;
-              ctx.ui.notify(
-                `Authentication unavailable for ${slot.provider}. Use /login.`,
-                "error",
-              );
-              return;
-            }
+          if (!(await pi.setModel(model))) {
             if (!alive(signal)) return;
-            const requestedThinking = slot.thinking;
-            if (slot.thinking !== undefined) pi.setThinkingLevel(slot.thinking);
-            if (!alive(signal)) return;
-            if (requestedThinking !== undefined && pi.getThinkingLevel() !== requestedThinking) {
-              ctx.ui.notify(
-                `Slot ${key}: ${requestedThinking} is unsupported by ${slot.provider}/${slot.model}; using ${pi.getThinkingLevel()}.`,
-                "warning",
-              );
-            }
-            ctx.ui.notify(
-              `Slot ${key}: ${slot.provider}/${slot.model} (${pi.getThinkingLevel()})`,
-              "info",
-            );
-          } catch (error) {
-            if (!alive(signal)) return;
-            ctx.ui.notify(`Cannot switch model: ${error}`, "error");
-          } finally {
-            if (alive(signal)) {
-              switching = false;
-              refreshLegend(ctx);
-            }
+            ctx.ui.notify(`Authentication unavailable for ${slot.provider}. Use /login.`, "error");
+            return;
           }
-        },
+          if (!alive(signal)) return;
+          const requestedThinking = slot.thinking;
+          if (slot.thinking !== undefined) pi.setThinkingLevel(slot.thinking);
+          if (!alive(signal)) return;
+          lastSlot = key;
+          if (requestedThinking !== undefined && pi.getThinkingLevel() !== requestedThinking) {
+            ctx.ui.notify(
+              `Slot ${key}: ${requestedThinking} is unsupported by ${slot.provider}/${slot.model}; using ${pi.getThinkingLevel()}.`,
+              "warning",
+            );
+          }
+          ctx.ui.notify(
+            `Slot ${key}: ${slot.provider}/${slot.model} (${pi.getThinkingLevel()})`,
+            "info",
+          );
+        } catch (error) {
+          if (!alive(signal)) return;
+          ctx.ui.notify(`Cannot switch model: ${error}`, "error");
+        } finally {
+          if (alive(signal)) {
+            switching = false;
+            refreshLegend(ctx);
+          }
+        }
       },
+    };
+    slotHandlers.set(key, shortcut.handler);
+    pi.registerShortcut(
+      `${modifier}+${number}` as Parameters<ExtensionAPI["registerShortcut"]>[0],
+      shortcut,
     );
   }
 
@@ -275,15 +315,23 @@ export function registerModelHotkeys(
           );
           const modifierRow = `Modifier: ${config.modifier} (active: ${modifier})`;
           const modelNameStyleRow = `Model names: ${styleChoices[config.modelNameStyle ?? "short"]}`;
+          const scrollRow = `Alt+wheel: ${config.altScroll ? "on" : "off"} (fullscreen model strip)`;
           const choice = argument
             ? rows[Number(argument) - 1]
             : await ctx.ui.select(
                 "Model hotkeys — select a slot to configure",
-                [...rows, modifierRow, modelNameStyleRow, "Done"],
+                [...rows, modifierRow, modelNameStyleRow, scrollRow, "Done"],
                 { signal },
               );
           if (!alive(signal)) return;
           if (!choice || choice === "Done") return;
+          if (choice === scrollRow) {
+            updateConfig(path, (next) => {
+              next.altScroll = !next.altScroll;
+            });
+            refreshLegend(ctx);
+            continue;
+          }
           if (choice === modifierRow) {
             const selected = await ctx.ui.select(
               "Hotkey modifier (requires /reload)",

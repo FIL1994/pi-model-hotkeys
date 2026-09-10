@@ -19,6 +19,7 @@ function fixture(t) {
   const watcherCallbacks = [];
   const events = new Map();
   let widget;
+  const tui = { mode: "fullscreen" };
   const model = { provider: "openai-codex", id: "gpt-5.6-luna", name: "GPT-5.6 Luna" };
   const models = [model];
   let thinking = "medium";
@@ -50,7 +51,7 @@ function fixture(t) {
         assert.equal(name, "model-hotkeys");
         if (factory) assert.equal(options.placement, "belowEditor");
         widget =
-          typeof factory === "function" ? factory({}, { fg: (_color, text) => text }) : factory;
+          typeof factory === "function" ? factory(tui, { fg: (_color, text) => text }) : factory;
       },
       notify: (...args) => notifications.push(args),
       select: async (_title, options) => {
@@ -72,6 +73,19 @@ function fixture(t) {
   t.after(() => events.get("session_shutdown")?.({}, ctx));
   return {
     path,
+    tui,
+    wheel: async (overrides = {}) => {
+      const result = widget?.handleMouse?.({
+        type: "wheel",
+        alt: true,
+        ctrl: false,
+        shift: false,
+        wheelDelta: 1,
+        ...overrides,
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      return result;
+    },
     pi,
     ctx,
     models,
@@ -88,6 +102,112 @@ function fixture(t) {
     press: (key) => shortcuts.get(key).handler(ctx),
   };
 }
+
+test("Alt+wheel config defaults off, validates booleans, and toggles in the menu", async (t) => {
+  const f = fixture(t);
+  assert.equal(readConfig(f.path).altScroll ?? false, false);
+  for (const value of [null, 1, "true", {}]) {
+    assert.throws(
+      () =>
+        updateConfig(f.path, (c) => {
+          c.altScroll = value;
+        }),
+      /Invalid/,
+    );
+  }
+  f.selections.push("Alt+wheel: off (fullscreen model strip)", "Done");
+  await f.configure("");
+  assert.equal(readConfig(f.path).altScroll, true);
+  f.selections.push("Alt+wheel: on (fullscreen model strip)", "Done");
+  await f.configure("");
+  assert.equal(readConfig(f.path).altScroll, false);
+});
+
+test("Alt+wheel cycles sparse thinking slots in both directions and wraps", async (t) => {
+  const f = fixture(t);
+  updateConfig(f.path, (c) => {
+    c.altScroll = true;
+    c.slots[2] = { provider: f.ctx.model.provider, model: f.ctx.model.id, thinking: "low" };
+    c.slots[7] = { provider: f.ctx.model.provider, model: f.ctx.model.id, thinking: "high" };
+  });
+  f.emit("session_start");
+  assert.deepEqual(await f.wheel(), { handled: true });
+  assert.equal(f.pi.getThinkingLevel(), "low");
+  await f.wheel();
+  assert.equal(f.pi.getThinkingLevel(), "high");
+  await f.wheel();
+  assert.equal(f.pi.getThinkingLevel(), "low");
+  await f.wheel({ wheelDelta: -1 });
+  assert.equal(f.pi.getThinkingLevel(), "high");
+});
+
+test("Alt+wheel leaves unrelated input alone and observes live config", async (t) => {
+  const f = fixture(t);
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { provider: f.ctx.model.provider, model: f.ctx.model.id };
+  });
+  f.emit("session_start");
+  assert.equal(await f.wheel(), undefined);
+  updateConfig(f.path, (c) => {
+    c.altScroll = true;
+  });
+  for (const event of [
+    { alt: false },
+    { ctrl: true },
+    { shift: true },
+    { wheelDelta: 0 },
+    { type: "click" },
+  ]) {
+    assert.equal(await f.wheel(event), undefined);
+  }
+  f.tui.mode = "regular";
+  assert.equal(await f.wheel(), undefined);
+  assert.equal(f.changes.length, 0);
+  f.tui.mode = "fullscreen";
+  await f.wheel();
+  assert.equal(f.changes.length, 1);
+  updateConfig(f.path, (c) => {
+    c.altScroll = false;
+  });
+  assert.equal(await f.wheel(), undefined);
+  assert.equal(f.changes.length, 1);
+});
+
+test("Alt+wheel handles empty slots, busy sessions, and invalid config safely", async (t) => {
+  const f = fixture(t);
+  updateConfig(f.path, (c) => {
+    c.altScroll = true;
+  });
+  f.emit("session_start");
+  assert.equal(await f.wheel(), undefined);
+  updateConfig(f.path, (c) => {
+    c.slots[1] = { provider: f.ctx.model.provider, model: f.ctx.model.id };
+  });
+  f.ctx.isIdle = () => false;
+  assert.deepEqual(await f.wheel(), { handled: true });
+  assert.equal(f.changes.length, 0);
+  assert.match(f.notifications.at(-1)[0], /finish/);
+  writeFileSync(f.path, "invalid");
+  assert.equal(await f.wheel(), undefined);
+});
+
+test("Alt+wheel remembers the selected slot when multiple presets match", async (t) => {
+  const f = fixture(t);
+  updateConfig(f.path, (c) => {
+    c.altScroll = true;
+    for (const key of [1, 3, 9]) {
+      c.slots[key] = { provider: f.ctx.model.provider, model: f.ctx.model.id };
+    }
+  });
+  f.emit("session_start");
+  await f.press("alt+3");
+  await f.wheel();
+  assert.match(f.notifications.at(-1)[0], /Slot 9:/);
+  await f.wheel();
+  assert.match(f.notifications.at(-1)[0], /Slot 1:/);
+  await f.wheel({ wheelDelta: -1 });
+  assert.match(f.notifications.at(-1)[0], /Slot 9:/);
+});
 
 test("compact model names retain useful family context", () => {
   assert.equal(compactModelName("gpt-5.6-luna"), "luna");

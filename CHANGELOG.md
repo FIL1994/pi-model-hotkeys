@@ -7,6 +7,7 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Opt-in Alt+wheel slot cycling over the model legend in fullscreen mode.
 - Optional labels for model slots.
 - Capability-aware thinking-level choices.
 - Configurable full, friendly, short, and compact model names in the legend.
