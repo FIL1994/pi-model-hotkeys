@@ -1,0 +1,136 @@
+---
+import '../styles/custom.css';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const docs = `${base}/guides/installation/`;
+const features = [
+  ['01', 'Less picking. More building.', 'Jump directly to a model with Alt+1–9. No menus, no cycling, no break in your train of thought.'],
+  ['02', 'A shortcut for every mindset.', 'Pair a model with a thinking level. Keep one preset for quick questions and another for the hard problems.'],
+  ['03', 'Always in your line of sight.', 'A compact legend lives below your editor. See your presets and the active match without leaving your work.'],
+];
+---
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Nine configurable model shortcuts for Pi. Switch models and thinking levels without breaking your flow." />
+    <meta name="theme-color" content="#0c1012" />
+    <title>Pi Model Hotkeys — Stay in your flow.</title>
+    <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
+  </head>
+  <body>
+    <a href="#main" class="skip">Skip to content</a>
+    <div class="shell">
+      <header class="flex items-center justify-between gap-4">
+        <a href={`${base}/`} class="brand flex items-center gap-3"><span class="logo" aria-hidden="true">ϟ</span>pi<span class="brand-sub">/ model hotkeys</span></a>
+        <nav aria-label="Main navigation" class="flex items-center gap-6">
+          <a href={docs}>Docs</a>
+          <a href="https://github.com/FIL1994/pi-model-hotkeys">GitHub <span aria-hidden="true">↗</span></a>
+        </nav>
+      </header>
+      <main id="main">
+        <section class="hero grid items-center gap-12 lg:grid-cols-2">
+          <div>
+            <p class="eyebrow flex items-center gap-2"><span class="dot"></span> SMALL EXTENSION. BIG FLOW STATE.</p>
+            <h1>Your models.<br />Your keys.<br /><span>Zero friction.</span></h1>
+            <p class="intro">The right model is a keystroke away. Give your favorite Pi setups a shortcut—and keep your head in the code.</p>
+            <div class="flex flex-wrap items-center gap-4 mt-8">
+              <a class="button primary" href={docs}>Get started <span aria-hidden="true">↗</span></a>
+              <a class="button secondary" href={`${base}/guides/shortcuts/`}>Explore the shortcuts <span aria-hidden="true">→</span></a>
+            </div>
+            <p class="hero-note">Nine presets. Any available model. Your conversation stays.</p>
+          </div>
+          <div class="demo-wrap">
+            <div class="terminal" aria-label="Illustration of switching between model presets in Pi">
+              <div class="terminal-bar flex items-center justify-between"><span class="flex gap-2" aria-hidden="true"><i></i><i></i><i></i></span><span>pi — your next great idea</span><span aria-hidden="true">⌘</span></div>
+              <div class="terminal-body">
+                <div class="terminal-meta">~/projects/something-good <span>main*</span></div>
+                <p><span class="lime">❯</span> Let's think this through.</p>
+                <div class="response"><span class="lime">●</span><div>Same conversation.<br />A different gear.<br /><span class="muted">Ready when you are.</span></div></div>
+                <div class="editor"><span>What should we build next?</span><span class="cursor" aria-hidden="true"></span></div>
+                <div class="legend flex flex-wrap gap-2"><span>alt+1 quick</span><span class="selected">● alt+2 deep</span><span>alt+3 explore</span></div>
+                <div class="terminal-bottom flex justify-between"><span>gpt-5.6-luna</span><span>thinking: high</span></div>
+              </div>
+            </div>
+            <div class="key-callout flex items-center gap-3"><kbd>alt</kbd><span>+</span><kbd>2</kbd><span class="callout-label">Find your next gear.</span></div>
+            <p class="demo-caption">Illustrative presets · labels and thinking levels are yours to choose</p>
+          </div>
+        </section>
+        <section class="features grid gap-8 md:grid-cols-3" aria-label="Features">
+          {features.map(([number, title, description]) => <article><span class="feature-number">{number} /</span><h2>{title}</h2><p>{description}</p></article>)}
+        </section>
+        <section class="install grid gap-8 md:grid-cols-2 items-center" aria-labelledby="install-title">
+          <div><p class="eyebrow">UP AND RUNNING</p><h2 id="install-title">One install. Nine possibilities.</h2><p>Install the extension, run <code>/reload</code>, then make it yours with <code>/model-hotkeys</code>.</p></div>
+          <div class="install-code"><span class="code-label">TERMINAL</span><pre><code>pi install git:github.com/FIL1994/pi-model-hotkeys</code></pre><a href={docs}>Read the setup guide <span aria-hidden="true">→</span></a></div>
+        </section>
+      </main>
+      <footer class="flex flex-wrap items-center justify-between gap-4"><span>Built for Pi. Designed to stay out of your way.</span><div class="flex gap-6"><a href="https://github.com/FIL1994/pi-model-hotkeys/blob/main/LICENSE">MIT licensed</a><a href={`${base}/reference/troubleshooting/`}>Need a hand? ↗</a></div></footer>
+    </div>
+  </body>
+</html>
+<style>
+  :global(body) { margin: 0; background: #0c1012; color: #f0f3ed; font-family: var(--sl-font); -webkit-font-smoothing: antialiased; }
+  :global(*) { box-sizing: border-box; }
+  :global(a) { color: inherit; text-decoration: none; }
+  :global(a:focus-visible) { outline: 2px solid #a3e635; outline-offset: 6px; }
+  .shell { max-width: 1240px; margin: auto; padding: 0 40px; }
+  header { min-height: 100px; border-bottom: 1px solid #ffffff12; }
+  .brand { font-size: 24px; font-weight: 750; letter-spacing: -1px; }
+  .brand-sub { font-size: 15px; color: #a5afad; font-weight: 400; letter-spacing: -.3px; }
+  .logo { display: grid; place-items: center; width: 33px; height: 33px; background: #a3e635; color: #16210d; border-radius: 9px; font-size: 31px; }
+  nav { font-size: 14px; color: #c0c8c4; }
+  nav a:hover, footer a:hover { color: #a3e635; }
+  .hero { padding: 100px 0 86px; }
+  .eyebrow { color: #a3e635; font-size: 10px; letter-spacing: 2px; font-weight: 650; margin: 0 0 24px; }
+  .dot { height: 6px; width: 6px; background: #a3e635; border-radius: 50%; box-shadow: 0 0 14px #a3e63566; }
+  h1 { font-size: clamp(52px, 5.8vw, 78px); letter-spacing: -.065em; line-height: 1.04; font-weight: 650; margin: 0; }
+  h1 span { color: #a3e635; }
+  .intro { font-size: 17px; line-height: 1.8; color: #a5afad; max-width: 400px; margin: 26px 0 0; }
+  .button { padding: 14px 18px; border-radius: 8px; font-size: 13px; font-weight: 650; display: inline-flex; gap: 18px; align-items: center; transition: background .2s; }
+  .primary { background: #a3e635; color: #142008; }
+  .primary:hover { background: #c1f477; }
+  .secondary { border: 1px solid #ffffff20; }
+  .secondary:hover { background: #ffffff08; }
+  .hero-note { color: #8b9793; font-size: 11px; margin-top: 22px; }
+  .demo-wrap { position: relative; min-width: 0; }
+  .demo-wrap::before { content: ''; position: absolute; inset: -80px; background: radial-gradient(ellipse, #a3e6350c, transparent 65%); pointer-events: none; z-index: -1; }
+  .terminal { border: 1px solid #344039; border-radius: 12px; background: #111719; box-shadow: 0 28px 70px #0005; overflow: hidden; font-family: ui-monospace, monospace; font-size: 12px; }
+  .terminal-bar { padding: 16px; background: #ffffff03; border-bottom: 1px solid #ffffff0b; color: #8b9793; font-size: 10px; }
+  .terminal-bar i { display: block; width: 8px; height: 8px; border-radius: 50%; background: #526159; }
+  .terminal-bar i:first-child { background: #a3e635; }
+  .terminal-body { padding: 25px 22px 16px; }
+  .terminal-meta { color: #8b9793; font-size: 10px; margin-bottom: 32px; }
+  .terminal-meta span { color: #a3e635; margin-left: 12px; }
+  .lime { color: #a3e635; }
+  .response { display: flex; gap: 12px; line-height: 1.9; margin: 26px 0 35px; }
+  .muted { color: #8b9793; }
+  .editor { display: flex; justify-content: space-between; border-top: 1px solid #455247; border-bottom: 1px solid #455247; padding: 20px 0; color: #89978e; }
+  .cursor { background: #a3e635; width: 7px; height: 15px; }
+  .legend { padding: 12px 0; font-size: 10px; color: #8b9793; }
+  .legend span { padding: 5px 7px; }
+  .legend .selected { color: #b6ee6b; background: #a3e63514; border-radius: 4px; }
+  .terminal-bottom { border-top: 1px solid #ffffff0b; padding-top: 12px; color: #8b9793; font-size: 9px; }
+  .key-callout { width: fit-content; margin: -1px 20px 0 auto; padding: 15px 20px; background: #19221b; border: 1px solid #344039; border-radius: 0 0 12px 12px; color: #819277; font-size: 13px; }
+  kbd { display: grid; place-items: center; min-width: 38px; height: 36px; border: 1px solid #546647; border-bottom: 3px solid #546647; border-radius: 7px; color: #d9f5b5; font-size: 14px; background: #263321; }
+  .callout-label { font-size: 11px; color: #b5c4af; padding-left: 7px; }
+  .demo-caption { text-align: center; color: #8b9793; font-size: 10px; margin-top: 20px; }
+  .features { border-top: 1px solid #ffffff14; padding: 40px 0 56px; }
+  .feature-number { font: 11px ui-monospace, monospace; color: #a3e635; }
+  h2 { font-size: 19px; letter-spacing: -.035em; font-weight: 600; }
+  .features p, .install p:not(.eyebrow) { font-size: 14px; line-height: 1.8; color: #a5afad; }
+  .install { background: #141b19; border: 1px solid #ffffff12; border-radius: 16px; padding: 36px; margin-bottom: 65px; }
+  .install .eyebrow { margin-bottom: 14px; }
+  .install h2 { font-size: 27px; margin: 0; }
+  .install p { margin-bottom: 0; }
+  .install code { font-size: 12px; color: #d0dfc5; }
+  .install-code { min-width: 0; border: 1px solid #ffffff12; border-radius: 10px; padding: 20px; background: #0c1012; }
+  .code-label { font: 9px ui-monospace, monospace; letter-spacing: 2px; color: #8b9793; }
+  pre { overflow-x: auto; padding-bottom: 10px; font-size: 11px; }
+  .install-code a { color: #a3e635; font-size: 12px; }
+  footer { padding: 25px 0 35px; border-top: 1px solid #ffffff12; color: #8b9793; font-size: 11px; }
+  .skip { position: absolute; top: -100px; padding: 12px; background: #a3e635; color: #0c1012; z-index: 10; }
+  .skip:focus { top: 10px; }
+  @media (max-width: 1023px) { .hero { padding-top: 60px; } .demo-wrap { max-width: 620px; width: 100%; } }
+  @media (max-width: 540px) { .shell { padding: 0 20px; } header { min-height: 80px; } .brand-sub { display: none; } .hero { padding: 50px 0; } .install { padding: 24px; } .terminal-body { padding: 20px 14px 14px; } .callout-label { font-size: 10px; } }
+  @media (prefers-reduced-motion: reduce) { .button { transition: none; } }
+</style>

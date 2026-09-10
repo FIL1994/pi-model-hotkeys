@@ -110,6 +110,20 @@ Provider and model IDs cannot contain surrounding whitespace, and labels are tri
 
 ## Development
 
+### Documentation website
+
+The Astro, Starlight, and Tailwind documentation site lives in `website`.
+
+```sh
+cd website
+bun install
+bun run dev
+```
+
+See `website/README.md` for production builds and deployment settings.
+
+### Extension
+
 From a local checkout:
 
 ```sh
