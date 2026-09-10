@@ -637,6 +637,36 @@ test("RPC fallback is flat, scoped by default, and displays name/provider/id", a
   });
 });
 
+test("RPC fallback resolves displayed choices after concurrent slot changes", async (t) => {
+  const f = fixture(t);
+  f.ctx.mode = "rpc";
+  const target = { provider: "other", id: "target", name: "Z target" };
+  const other = { provider: "other", id: "other", name: "A other" };
+  // Registry order differs from display order (current model, assigned model, then name).
+  f.models.unshift(other, target);
+  updateConfig(f.path, (config) => {
+    config.slots[2] = { provider: target.provider, model: target.id };
+  });
+  const select = f.ctx.ui.select;
+  f.ctx.ui.select = async (title, choices) => {
+    if (title !== "Choose model") return select(title, choices);
+    const displayed = flatModelChoices(f.models, {
+      current: f.ctx.model,
+      slots: readConfig(f.path).slots,
+    });
+    assert.deepEqual(choices, displayed);
+    const choice = choices[1];
+    updateConfig(f.path, (config) => {
+      config.slots[2] = { provider: other.provider, model: other.id };
+    });
+    return choice;
+  };
+  f.selections.push("Choose model", "Keep current (effective: medium)");
+  await f.configure("1");
+  assert.deepEqual(readConfig(f.path).slots[1], { provider: target.provider, model: target.id });
+  assert.deepEqual(readConfig(f.path).slots[2], { provider: other.provider, model: other.id });
+});
+
 test("RPC fallback applies the command's prefilled search and previews the active modifier", async (t) => {
   const f = fixture(t);
   f.ctx.mode = "rpc";

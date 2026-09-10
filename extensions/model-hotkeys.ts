@@ -26,6 +26,7 @@ import {
   modelKey,
   ModelPickerComponent,
   modelInScope,
+  orderModels,
   thinkingChoices,
   type PickerModel,
 } from "./model-picker.ts";
@@ -335,21 +336,19 @@ export function registerModelHotkeys(
         const scopedThinking = new Map(
           scoped.map((entry) => [modelKey(entry.model), entry.thinkingLevel]),
         );
-        const choices = flatModelChoices(matching, {
+        const choiceOptions = {
           current: ctx.model as PickerModel | undefined,
           slots: readConfig(path).slots,
           scopedThinking,
-        });
+        };
+        const orderedModels = orderModels(matching, choiceOptions);
+        const choices = flatModelChoices(orderedModels, choiceOptions);
+        const modelsByChoice = new Map(
+          choices.map((choice, index) => [choice, orderedModels[index]]),
+        );
         const choice = await ctx.ui.select("Choose model", choices, { signal });
         if (!alive(signal) || !choice) return undefined;
-        let target = matching.find(
-          (model) =>
-            flatModelChoices([model], {
-              current: ctx.model as PickerModel | undefined,
-              slots: readConfig(path).slots,
-              scopedThinking,
-            })[0] === choice,
-        );
+        let target = modelsByChoice.get(choice);
         // Accept old RPC clients that still send provider then model IDs, without exposing
         // a provider-first picker in the new UI.
         if (!target) {
