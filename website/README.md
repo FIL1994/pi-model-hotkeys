@@ -24,7 +24,9 @@ bun run preview
 - `src/styles/custom.css` — Tailwind imports and Starlight theme
 - `astro.config.mjs` — navigation, metadata, and deployment settings
 
-Starlight includes light/dark themes, mobile navigation, page outlines, code-copy buttons, and Pagefind search. Search is generated during production builds; use `bun run preview` to test it.
+The landing page and docs share one dark-and-lime theme, independent of system preferences or previously saved Starlight themes. Shared palette tokens live in `src/styles/custom.css`; component overrides keep Starlight in dark mode without a theme selector.
+
+Starlight includes mobile navigation, page outlines, code-copy buttons, and Pagefind search. Search is generated during production builds; use `bun run preview` to test it.
 
 ## Deploy
 

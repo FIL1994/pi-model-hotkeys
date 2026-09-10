@@ -69,7 +69,7 @@ const features = [
   </body>
 </html>
 <style>
-  :global(body) { margin: 0; background: #0c1012; color: #f0f3ed; font-family: var(--sl-font); -webkit-font-smoothing: antialiased; }
+  :global(body) { margin: 0; background: var(--site-bg); color: var(--site-text); font-family: var(--sl-font); -webkit-font-smoothing: antialiased; }
   :global(*) { box-sizing: border-box; }
   :global(a) { color: inherit; text-decoration: none; }
   :global(a:focus-visible) { outline: 2px solid #a3e635; outline-offset: 6px; }
@@ -84,10 +84,10 @@ const features = [
   .eyebrow { color: #a3e635; font-size: 10px; letter-spacing: 2px; font-weight: 650; margin: 0 0 24px; }
   .dot { height: 6px; width: 6px; background: #a3e635; border-radius: 50%; box-shadow: 0 0 14px #a3e63566; }
   h1 { font-size: clamp(52px, 5.8vw, 78px); letter-spacing: -.065em; line-height: 1.04; font-weight: 650; margin: 0; }
-  h1 span { color: #a3e635; }
-  .intro { font-size: 17px; line-height: 1.8; color: #a5afad; max-width: 400px; margin: 26px 0 0; }
+  h1 span { color: var(--site-accent); }
+  .intro { font-size: 17px; line-height: 1.8; color: var(--site-muted); max-width: 400px; margin: 26px 0 0; }
   .button { padding: 14px 18px; border-radius: 8px; font-size: 13px; font-weight: 650; display: inline-flex; gap: 18px; align-items: center; transition: background .2s; }
-  .primary { background: #a3e635; color: #142008; }
+  .primary { background: var(--site-accent); color: #142008; }
   .primary:hover { background: #c1f477; }
   .secondary { border: 1px solid #ffffff20; }
   .secondary:hover { background: #ffffff08; }

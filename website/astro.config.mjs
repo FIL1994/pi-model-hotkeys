@@ -15,6 +15,10 @@ export default defineConfig({
         { icon: "github", label: "GitHub", href: "https://github.com/FIL1994/pi-model-hotkeys" },
       ],
       customCss: ["./src/styles/custom.css"],
+      components: {
+        ThemeProvider: "./src/components/ThemeProvider.astro",
+        ThemeSelect: "./src/components/ThemeSelect.astro",
+      },
       editLink: { baseUrl: "https://github.com/FIL1994/pi-model-hotkeys/edit/main/website/" },
       sidebar: [
         {
