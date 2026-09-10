@@ -16,6 +16,7 @@ function fixture(t) {
   const notifications = [];
   const selections = [];
   const changes = [];
+  const watcherCallbacks = [];
   const events = new Map();
   let widget;
   const model = { provider: "openai-codex", id: "gpt-5.6-luna" };
@@ -48,18 +49,95 @@ function fixture(t) {
         const selection = selections.shift();
         return typeof selection === "number" ? options[selection] : selection;
       },
+      input: async () => selections.shift(),
     },
   };
-  const register = () => registerModelHotkeys(pi, path);
+  const register = () => registerModelHotkeys(pi, path, (_path, _options, listener) => {
+    watcherCallbacks.push(listener);
+    return () => { const index = watcherCallbacks.indexOf(listener); if (index >= 0) watcherCallbacks.splice(index, 1); };
+  });
   register();
   t.after(() => events.get("session_shutdown")?.({}, ctx));
   return { path, pi, ctx, shortcuts, commands, notifications, selections, changes, register,
+    triggerWatch: () => watcherCallbacks.forEach(listener => listener()),
     emit: name => events.get(name)?.({}, ctx),
     legend: (width = 1000) => Array.isArray(widget) ? widget : widget?.render(width),
     configure: args => commands.get("model-hotkeys").handler(args, ctx),
     press: key => shortcuts.get(key).handler(ctx),
   };
 }
+
+test("labels can be set, preserved on reassignment, and removed", async t => {
+  const f = fixture(t);
+  f.selections.push("Use current model and thinking");
+  await f.configure("1");
+  f.selections.push("Set/remove label", "  Deep  ");
+  await f.configure("1");
+  assert.equal(readConfig(f.path).slots[1].label, "Deep");
+  assert.match(f.legend().join(""), /Deep/);
+  f.selections.push("Use current model and thinking");
+  await f.configure("1");
+  assert.equal(readConfig(f.path).slots[1].label, "Deep");
+  f.selections.push("Set/remove label", "");
+  await f.configure("1");
+  assert.equal(readConfig(f.path).slots[1].label, undefined);
+});
+
+test("shutdown prevents pending switch from applying thinking or notifying", async t => {
+  const f = fixture(t);
+  updateConfig(f.path, c => { c.slots[1] = { ...f.ctx.model, model: f.ctx.model.id, thinking: "high" }; });
+  let resolve;
+  f.pi.setModel = () => new Promise(r => { resolve = r; });
+  const pending = f.press("alt+1");
+  f.emit("session_shutdown");
+  resolve(true);
+  await pending;
+  assert.equal(f.pi.getThinkingLevel(), "medium");
+  assert.deepEqual(f.notifications, []);
+});
+
+test("shutdown aborts pending configuration without saving", async t => {
+  const f = fixture(t);
+  let resolve, signal;
+  f.ctx.ui.select = (_title, _options, options) => {
+    signal = options.signal;
+    return new Promise(r => { resolve = r; });
+  };
+  const pending = f.configure("1");
+  f.emit("session_shutdown");
+  assert.equal(signal.aborted, true);
+  resolve("Use current model and thinking");
+  await pending;
+  assert.deepEqual(readConfig(f.path).slots, {});
+  assert.deepEqual(f.notifications, []);
+});
+
+test("invalid updates preserve the original config", t => {
+  const f = fixture(t);
+  updateConfig(f.path, c => { c.slots[1] = { provider: "p", model: "m" }; });
+  const original = readFileSync(f.path, "utf8");
+  for (const invalid of [{ provider: " p" }, { model: "m " }, { label: "bad\u001b" }, { label: 42 }]) {
+    assert.throws(() => updateConfig(f.path, c => Object.assign(c.slots[1], invalid)));
+    assert.equal(readFileSync(f.path, "utf8"), original);
+  }
+});
+
+test("picker only offers supported thinking levels", async t => {
+  const f = fixture(t);
+  f.ctx.model.reasoning = true;
+  f.ctx.model.thinkingLevelMap = { minimal: null, xhigh: "xhigh" };
+  f.selections.push("Choose model", f.ctx.model.provider, f.ctx.model.id);
+  const select = f.ctx.ui.select;
+  f.ctx.ui.select = (title, options, settings) => {
+    if (title.startsWith("Thinking level")) {
+      assert.deepEqual(options, ["Keep current", "off", "low", "medium", "high", "xhigh"]);
+      return Promise.resolve(undefined);
+    }
+    return select(title, options, settings);
+  };
+  await f.configure("1");
+  assert.deepEqual(readConfig(f.path).slots, {});
+});
 
 test("registers all nine keys; unassigned slots do not switch", async t => {
   const f = fixture(t);
@@ -105,7 +183,7 @@ test("legend picks up external config edits and cleans up its watcher", async t 
   const f = fixture(t);
   f.emit("session_start");
   updateConfig(f.path, c => { c.slots[4] = { provider: "external", model: "new-model" }; });
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  f.triggerWatch();
   assert.match(f.legend().join(""), /alt\+4 new-model/);
   f.emit("session_shutdown");
   assert.equal(f.legend(), undefined);

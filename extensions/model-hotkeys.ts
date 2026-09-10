@@ -5,15 +5,22 @@ import { join } from "node:path";
 import { levels, modifiers, readConfig, updateConfig, type Config, type Slot } from "./config.ts";
 
 const describe = (slot?: Slot) => slot
-  ? `${slot.provider}/${slot.model}${slot.thinking ? ` (${slot.thinking})` : ""}`
+  ? `${slot.label ? `${slot.label} — ` : ""}${slot.provider}/${slot.model}${slot.thinking ? ` (${slot.thinking})` : ""}`
   : "Unassigned";
 
-export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
+type Watch = (path: string, options: { persistent: boolean; interval: number }, listener: () => void) => (() => void);
+
+export function registerModelHotkeys(pi: ExtensionAPI, path: string, watch: Watch = (path, options, listener) => {
+  watchFile(path, options, listener);
+  return () => unwatchFile(path, listener);
+}) {
   let modifier: Config["modifier"] = "alt";
   try { modifier = readConfig(path).modifier; } catch { /* Report on session start. */ }
   let switching = false;
   let configuring = false;
   let stopWatching: (() => void) | undefined;
+  let lifecycle = new AbortController();
+  const alive = (signal: AbortSignal) => !signal.aborted && signal === lifecycle.signal;
 
   function refreshLegend(ctx: ExtensionContext) {
     if (ctx.mode !== "tui") return;
@@ -32,7 +39,7 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
           // Keep the model ID intact; qualify only collisions across providers.
           const ambiguous = entries.some(([, other]) => other.model === slot.model && other.provider !== slot.provider);
           const modelLabel = ambiguous ? `${slot.provider}/${slot.model}` : slot.model;
-          const label = `${active ? "● " : ""}${modifier}+${key} ${modelLabel}${slot.thinking ? ` (${slot.thinking})` : ""}`;
+          const label = `${active ? "● " : ""}${modifier}+${key} ${slot.label ?? modelLabel}${slot.thinking ? ` (${slot.thinking})` : ""}`;
           return theme.fg(active ? "accent" : "muted", label);
         });
         const text = labels.length ? labels.join(theme.fg("dim", "  |  "))
@@ -46,12 +53,17 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
   }
 
   pi.on("session_start", (_event, ctx) => {
+    lifecycle.abort();
+    lifecycle = new AbortController();
+    switching = false;
+    configuring = false;
     stopWatching?.();
     refreshLegend(ctx);
     if (ctx.mode === "tui") {
-      const listener = () => refreshLegend(ctx);
-      watchFile(path, { persistent: false, interval: 1000 }, listener);
-      stopWatching = () => { unwatchFile(path, listener); stopWatching = undefined; };
+      const signal = lifecycle.signal;
+      const listener = () => { if (alive(signal)) refreshLegend(ctx); };
+      const cleanup = watch(path, { persistent: false, interval: 1000 }, listener);
+      stopWatching = () => { cleanup(); stopWatching = undefined; };
     }
     try { readConfig(path); } catch (error) {
       ctx.ui.notify(`Model hotkeys: ${error}. Fix ${path}; existing config will not be overwritten.`, "error");
@@ -60,6 +72,7 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
   pi.on("model_select", (_event, ctx) => refreshLegend(ctx));
   pi.on("thinking_level_select", (_event, ctx) => refreshLegend(ctx));
   pi.on("session_shutdown", (_event, ctx) => {
+    lifecycle.abort();
     stopWatching?.();
     if (ctx.mode === "tui") ctx.ui.setWidget("model-hotkeys", undefined);
   });
@@ -75,6 +88,7 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
           return;
         }
         switching = true;
+        const signal = lifecycle.signal;
         try {
           const slot = readConfig(path).slots[key];
           if (!slot) {
@@ -87,14 +101,22 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
             return;
           }
           if (!await pi.setModel(model)) {
+            if (!alive(signal)) return;
             ctx.ui.notify(`Authentication unavailable for ${slot.provider}. Use /login.`, "error");
             return;
           }
+          if (!alive(signal)) return;
+          const requestedThinking = slot.thinking;
           if (slot.thinking !== undefined) pi.setThinkingLevel(slot.thinking);
+          if (!alive(signal)) return;
+          if (requestedThinking !== undefined && pi.getThinkingLevel() !== requestedThinking) {
+            ctx.ui.notify(`Slot ${key}: ${requestedThinking} is unsupported by ${slot.provider}/${slot.model}; using ${pi.getThinkingLevel()}.`, "warning");
+          }
           ctx.ui.notify(`Slot ${key}: ${slot.provider}/${slot.model} (${pi.getThinkingLevel()})`, "info");
         } catch (error) {
+          if (!alive(signal)) return;
           ctx.ui.notify(`Cannot switch model: ${error}`, "error");
-        } finally { switching = false; refreshLegend(ctx); }
+        } finally { if (alive(signal)) { switching = false; refreshLegend(ctx); } }
       },
     });
   }
@@ -110,6 +132,7 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
         return;
       }
       configuring = true;
+      const signal = lifecycle.signal;
       try {
         while (true) {
           const config = readConfig(path);
@@ -117,10 +140,13 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
           const modifierRow = `Modifier: ${config.modifier} (active: ${modifier})`;
           const choice = argument ? rows[Number(argument) - 1] : await ctx.ui.select(
             "Model hotkeys — select a slot to configure", [...rows, modifierRow, "Done"],
+            { signal },
           );
+          if (!alive(signal)) return;
           if (!choice || choice === "Done") return;
           if (choice === modifierRow) {
-            const selected = await ctx.ui.select("Hotkey modifier (requires /reload)", [...modifiers]);
+            const selected = await ctx.ui.select("Hotkey modifier (requires /reload)", [...modifiers], { signal });
+            if (!alive(signal)) return;
             if (selected) {
               updateConfig(path, next => { next.modifier = selected as Config["modifier"]; });
               refreshLegend(ctx);
@@ -129,7 +155,33 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
             continue;
           }
           const key = String(rows.indexOf(choice) + 1);
-          const action = await ctx.ui.select(`Configure slot ${key}`, ["Choose model", "Use current model and thinking", "Clear slot"]);
+          const action = await ctx.ui.select(`Configure slot ${key}`, ["Choose model", "Use current model and thinking", "Set/remove label", "Clear slot"], { signal });
+          if (!alive(signal)) return;
+          if (action === "Set/remove label") {
+            const current = config.slots[key]?.label ?? "";
+            const label = await ctx.ui.input(`Label for slot ${key} (blank removes it)`, current, { signal });
+            if (!alive(signal)) return;
+            if (label === undefined) { if (argument) return; continue; }
+            const trimmed = label.trim();
+            if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
+              ctx.ui.notify("Labels cannot contain control characters.", "warning");
+              continue;
+            }
+            if (!config.slots[key]) {
+              ctx.ui.notify(`Slot ${key} is unassigned; choose a model before setting a label.`, "warning");
+              if (argument) return;
+              continue;
+            }
+            updateConfig(path, next => {
+              const existing = next.slots[key];
+              if (!existing) return;
+              if (trimmed) existing.label = trimmed; else delete existing.label;
+            });
+            refreshLegend(ctx);
+            ctx.ui.notify(trimmed ? `Slot ${key} labeled “${trimmed}”.` : `Slot ${key} label removed.`, "info");
+            if (argument) return;
+            continue;
+          }
           let slot: Slot | undefined;
           if (action === "Clear slot") {
             updateConfig(path, next => { delete next.slots[key]; });
@@ -143,26 +195,39 @@ export function registerModelHotkeys(pi: ExtensionAPI, path: string) {
             const providers = [...new Set(models.map(model => model.provider))].sort();
             if (!providers.length) ctx.ui.notify("No available models. Configure authentication with /login first.", "warning");
             else {
-              const provider = await ctx.ui.select("Provider", providers);
+              const provider = await ctx.ui.select("Provider", providers, { signal });
+              if (!alive(signal)) return;
               if (provider) {
-                const model = await ctx.ui.select("Model", models.filter(m => m.provider === provider).map(m => m.id).sort());
+                const model = await ctx.ui.select("Model", models.filter(m => m.provider === provider).map(m => m.id).sort(), { signal });
+                if (!alive(signal)) return;
                 if (model) {
-                  const thinking = await ctx.ui.select("Thinking level (clamped to model capabilities)", ["Keep current", ...levels]);
+                  const target = models.find(m => m.provider === provider && m.id === model);
+                  const supported = levels.filter(level => {
+                    if (!target?.reasoning) return level === "off";
+                    return target.thinkingLevelMap?.[level] !== null &&
+                      (level !== "xhigh" && level !== "max" || target.thinkingLevelMap?.[level] !== undefined);
+                  });
+                  const thinking = await ctx.ui.select("Thinking level (clamped to model capabilities)", ["Keep current", ...supported], { signal });
+                  if (!alive(signal)) return;
                   if (thinking) slot = { provider, model, ...(thinking === "Keep current" ? {} : { thinking: thinking as Slot["thinking"] }) };
                 }
               }
             }
           }
           if (slot) {
-            updateConfig(path, next => { next.slots[key] = slot; });
+            updateConfig(path, next => {
+              const old = next.slots[key];
+              next.slots[key] = { ...slot!, ...(old?.label ? { label: old.label } : {}) };
+            });
             refreshLegend(ctx);
             ctx.ui.notify(`Slot ${key} saved: ${describe(slot)}`, "info");
           }
           if (argument) return;
         }
       } catch (error) {
+        if (!alive(signal)) return;
         ctx.ui.notify(`Cannot configure model hotkeys: ${error}. Config: ${path}`, "error");
-      } finally { configuring = false; refreshLegend(ctx); }
+      } finally { if (alive(signal)) { configuring = false; refreshLegend(ctx); } }
     },
   });
 }
