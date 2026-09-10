@@ -18,8 +18,10 @@ the currently working keys and a `/reload` reminder.
 
 ## Install locally
 
+From the root of your local checkout:
+
 ```sh
-pi install /home/phil/projects/pi-extensions/pi-model-hotkeys
+pi install .
 ```
 
 Then run `/reload` in Pi.
