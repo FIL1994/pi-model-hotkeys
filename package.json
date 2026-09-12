@@ -34,6 +34,7 @@
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
+    "pack:check": "npm pack --dry-run --ignore-scripts",
     "test": "node --experimental-strip-types --test test/*.test.mjs",
     "prepare": "lefthook install"
   },
