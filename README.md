@@ -176,6 +176,43 @@ The built-in `GITHUB_TOKEN` handles GitHub releases; it does not replace
 GitHub Actions workflows. If npm publishing fails after a GitHub release is
 created, run **Publish to npm** manually with that release tag.
 
+### Manual local release
+
+The automated GitHub workflow is preferred. To release locally instead, start
+from a clean `main` checkout and make sure no Release Please PR is active:
+
+```sh
+git switch main
+git pull --ff-only
+test -z "$(git status --porcelain)"
+
+bun install --frozen-lockfile
+bun run check
+bun run lint
+bun run format:check
+bun run test
+npm run pack:check
+
+# Use minor or major instead of patch when appropriate.
+npm version patch --no-git-tag-version
+
+VERSION=$(node -p "require('./package.json').version")
+node -e 'const fs=require("node:fs"), p=require("./package.json"); fs.writeFileSync(".release-please-manifest.json", JSON.stringify({".":p.version}, null, 2)+"\n")'
+
+git add package.json .release-please-manifest.json
+git commit -m "chore: release v$VERSION"
+git tag -a "v$VERSION" -m "Release v$VERSION"
+git push origin main "v$VERSION"
+
+npm publish --access public
+gh release create "v$VERSION" --generate-notes --title "v$VERSION"
+```
+
+Authenticate with `npm login` before publishing and `gh auth login` before
+creating the GitHub release. Local publishing bypasses Release Please and does
+not generate GitHub OIDC provenance; use the automated workflow when provenance
+is required.
+
 ## License
 
 [MIT](LICENSE)
