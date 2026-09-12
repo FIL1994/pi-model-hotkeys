@@ -43,6 +43,7 @@ From the repository root:
 
 ```sh
 bun install
+bun run setup
 pi install .
 ```
 

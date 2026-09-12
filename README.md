@@ -138,13 +138,19 @@ From a local checkout:
 
 ```sh
 bun install
+bun run setup
 bun run check
 bun run lint
 bun run format:check
 bun run test
+bun run test:package
+bun run test:git
 ```
 
 Run `bun run format` to format the project in place.
+Run `bun run setup` once after installing dependencies to install the local
+Lefthook hooks. Hook setup is intentionally separate from package installation
+so Pi can install the Git source without development dependencies.
 
 To load your checkout in Pi:
 
@@ -193,6 +199,8 @@ bun run check
 bun run lint
 bun run format:check
 bun run test
+bun run test:package
+bun run test:git
 npm run pack:check
 
 # Use minor or major instead of patch when appropriate.

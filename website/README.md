@@ -9,6 +9,10 @@ bun install
 bun run dev
 ```
 
+To work on the extension itself, run `bun run setup` from the repository root
+after installing the root dependencies. Hook setup is separate from package
+installation so Pi can install the Git source without development dependencies.
+
 The development server runs at `http://localhost:4321`.
 
 ```sh

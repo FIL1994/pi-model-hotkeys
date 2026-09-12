@@ -52,6 +52,8 @@ jobs:
           bun run lint
           bun run format:check
           bun run test
+          bun run test:package
+          bun run test:git
 
       - name: Verify package contents
         run: npm run pack:check

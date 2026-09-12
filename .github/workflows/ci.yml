@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install extension dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run extension checks
+        run: |
+          bun run check
+          bun run lint
+          bun run format:check
+          bun run test
+          bun run test:package
+          bun run test:git
+          npm run pack:check
+
+      - name: Install website dependencies
+        working-directory: website
+        run: bun install --frozen-lockfile
+
+      - name: Build documentation website
+        working-directory: website
+        env:
+          SITE_URL: https://fil1994.github.io
+          BASE_PATH: /pi-model-hotkeys
+        run: bun run build
