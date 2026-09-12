@@ -25,3 +25,7 @@ The model picker starts in the session's **scoped model list**, when one is conf
 Cached rows stay visible during refresh. Scoped rows are retained by provider/model ID.
 
 A shortcut refuses to switch to an assigned model **outside the active non-empty scope**. Seeing a model in the all-models picker does not bypass that restriction.
+
+Refreshes are bounded and can time out without blocking the picker. If a refresh
+fails or times out, the cached models remain available; press <kbd>Ctrl</kbd> +
+<kbd>R</kbd> to retry.

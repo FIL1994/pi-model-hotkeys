@@ -165,9 +165,9 @@ patches, `feat:` for features, and `!` or `BREAKING CHANGE:` for breaking change
 Merge that PR to update `package.json`, create a version tag, publish a GitHub
 release with generated notes, and publish the package to npm from that exact tag.
 
-The release manifest starts at the existing package version, `0.1.0`; the initial
-commit is the bootstrap baseline for the first automated release. While versions
-are below `1.0.0`, breaking changes bump the minor version.
+The release manifest was bootstrapped at package version `0.1.0`; it tracks the
+current package version for subsequent automated releases. While versions are
+below `1.0.0`, breaking changes bump the minor version.
 
 Repository setup requires **Settings → Actions → General → Workflow permissions →
 Allow GitHub Actions to create and approve pull requests**. Add an `NPM_TOKEN`

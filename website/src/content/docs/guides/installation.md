@@ -5,11 +5,19 @@ description: Install Pi Model Hotkeys and get ready to assign your first shortcu
 
 ## Install in Pi
 
-With Pi installed, run this in your terminal:
+With Pi installed, install the published package:
+
+```sh
+pi install npm:@philvr/pi-model-hotkeys
+```
+
+For an unreleased checkout or development version, install directly from Git:
 
 ```sh
 pi install git:github.com/FIL1994/pi-model-hotkeys
 ```
+
+Use `pi update npm:@philvr/pi-model-hotkeys` to update an npm installation.
 
 In an existing Pi session, load the extension:
 
