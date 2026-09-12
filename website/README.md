@@ -30,10 +30,20 @@ Starlight includes mobile navigation, page outlines, code-copy buttons, and Page
 
 ## Deploy
 
-Build from `website` and publish `website/dist` using any static host. For a canonical domain, set `SITE_URL` when building. For subdirectory hosting, also set `BASE_PATH`:
+The repository deploys the website to GitHub Pages through
+`.github/workflows/deploy-docs.yml` whenever changes under `website` land on
+`main`. Enable **Settings → Pages → Build and deployment → Source: GitHub
+Actions** once in the repository settings.
+
+The published site is:
+
+<https://fil1994.github.io/pi-model-hotkeys/>
+
+To build locally, set `SITE_URL` for the canonical domain and `BASE_PATH` for
+the repository subdirectory:
 
 ```sh
 SITE_URL=https://fil1994.github.io BASE_PATH=/pi-model-hotkeys bun run build
 ```
 
-Root hosting uses `/` by default. No deployment workflow or hosting account is required for local development.
+Root hosting uses `/` by default.

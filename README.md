@@ -121,6 +121,8 @@ Provider and model IDs cannot contain surrounding whitespace, and labels are tri
 ### Documentation website
 
 The Astro, Starlight, and Tailwind documentation site lives in `website`.
+The published documentation is available at
+<https://fil1994.github.io/pi-model-hotkeys/>.
 
 ```sh
 cd website
