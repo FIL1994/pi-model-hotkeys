@@ -1,6 +1,6 @@
 {
   "name": "@philvr/pi-model-hotkeys",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Nine configurable model hotkeys for Pi.",
   "keywords": [
     "hotkeys",
